@@ -1,4 +1,4 @@
-PLACEHOLDER# Game Design Document — Three Kingdoms Strategy
+# Game Design Document — Three Kingdoms Strategy
 
 **Version:** 0.1 (Draft)
 **Last updated:** 2026-05-17
