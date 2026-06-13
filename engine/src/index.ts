@@ -28,3 +28,5 @@ export * from './stamina';
 export * from './advisor';
 
 export * from './advancement';
+
+export * from './manual';

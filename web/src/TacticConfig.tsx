@@ -12,7 +12,8 @@
 import { useEffect, useState } from 'react';
 import { loadTacticConfig, saveTacticConfig } from './tacticStore';
 import { loadAdvancement, setAdvanceLevel } from './advancementStore';
-import { advanceCost, advancementBonus, ADVANCE_MAX } from './engine';
+import { loadManuals, setManual } from './manualStore';
+import { advanceCost, advancementBonus, ADVANCE_MAX, WAR_MANUALS } from './engine';
 import type { Hero, Tactic, TacticLibrary, TacticType } from './engine/types';
 import {
   ROSTER, RECRUIT_POOL,
@@ -92,6 +93,8 @@ function HeroTacticCard({
   lib,
   advanceLevel,
   onAdvance,
+  manualId,
+  onSetManual,
   onLearnSlot,
   onUpgrade,
   onClearSlot,
@@ -100,6 +103,8 @@ function HeroTacticCard({
   lib: TacticLibrary;
   advanceLevel: number;
   onAdvance: () => void;
+  manualId: string;
+  onSetManual: (id: string) => void;
   onLearnSlot: (slotIdx: 0 | 1) => void;
   onUpgrade: (tacticId: string) => void;
   onClearSlot: (slotIdx: 0 | 1) => void;
@@ -127,6 +132,16 @@ function HeroTacticCard({
           style={{ padding: '3px 12px', background: advCost === null ? '#333' : '#7a5c12', color: '#fff', border: 'none', borderRadius: 4, cursor: advCost === null ? 'not-allowed' : 'pointer', fontSize: 12 }}>
           {advCost === null ? '已滿階' : `進階（銀 ${advCost}）`}
         </button>
+      </div>
+
+      {/* M5-6 兵書 */}
+      <div style={{ ...style.row, marginBottom: 10, gap: 10 }}>
+        <span style={{ fontSize: 13, color: '#8a7a5a' }}>兵書</span>
+        <select value={manualId} onChange={(e) => onSetManual(e.target.value)}>
+          <option value="">未裝備</option>
+          {WAR_MANUALS.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
+        </select>
+        {manualId ? <span style={{ color: 'var(--gold)', fontSize: 13 }}>{WAR_MANUALS.find((m) => m.id === manualId)?.desc}</span> : <span style={{ color: '#8a7a5a', fontSize: 13 }}>裝備兵書強化單一屬性</span>}
       </div>
 
       {/* 自帶戰法 */}
@@ -318,6 +333,8 @@ export default function TacticConfig() {
   const [message, setMessage] = useState<string>('');
   // M5-4 進階等級（heroId → level，持久化於 advancementStore）
   const [advancement, setAdvancement] = useState<Record<string, number>>(() => loadAdvancement());
+  // M5-6 兵書（heroId → manualId，持久化於 manualStore）
+  const [manuals, setManuals] = useState<Record<string, string>>(() => loadManuals());
 
   // M1.5：配置任一變動即持久化，讓打地戰役/沙盒/PvP 實戰吃到
   useEffect(() => {
@@ -336,6 +353,12 @@ export default function TacticConfig() {
     setAdvanceLevel(hero.id, next);
     setAdvancement((m) => ({ ...m, [hero.id]: next }));
     showMsg(`${nameOf(hero.id)} 進階至 ${next} 階（全屬性 +${Math.round(advancementBonus(next) * 100)}%）`);
+  };
+
+  // M5-6：裝備/卸下兵書
+  const handleSetManual = (id: string) => {
+    setManual(hero.id, id);
+    setManuals((m) => { const n = { ...m }; if (id) n[hero.id] = id; else delete n[hero.id]; return n; });
   };
 
   const showMsg = (msg: string) => {
@@ -440,6 +463,8 @@ export default function TacticConfig() {
             lib={lib}
             advanceLevel={advancement[hero.id] ?? 0}
             onAdvance={handleAdvance}
+            manualId={manuals[hero.id] ?? ''}
+            onSetManual={handleSetManual}
             onLearnSlot={handleLearnSlot}
             onUpgrade={handleUpgrade}
             onClearSlot={handleClearSlot}
