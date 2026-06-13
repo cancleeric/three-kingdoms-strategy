@@ -10,3 +10,5 @@ export * from './save';
 export * from './gacha';
 
 export * from './season';
+
+export * from './alliance';

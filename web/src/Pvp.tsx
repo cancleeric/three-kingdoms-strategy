@@ -21,6 +21,10 @@ export default function Pvp() {
   const [submitted, setSubmitted] = useState<string[]>([]);
   const [result, setResult] = useState<{ result: BattleResult; winnerSeat: string } | null>(null);
   const [note, setNote] = useState('');
+  // §12 同盟
+  const [alliance, setAlliance] = useState<{ id: string; name: string; count: number; members: { name: string; rank: string; contribution: number }[]; tech: Record<string, { level: number; progress: number }>; perks: Record<string, number> } | null>(null);
+  const [allyName, setAllyName] = useState('');
+  const [allyCode, setAllyCode] = useState('');
 
   useEffect(() => {
     const s = io({ path: '/sanguo/socket', transports: ['websocket', 'polling'] });
@@ -31,8 +35,15 @@ export default function Pvp() {
     s.on('sg:submitted', (d: { seat: string }) => setSubmitted((p) => [...new Set([...p, d.seat])]));
     s.on('sg:result', (d: { result: BattleResult; winnerSeat: string }) => { setResult(d); setSubmitted([]); });
     s.on('sg:opponentLeft', () => { setNote('對手已離開'); setSeats([]); });
+    s.on('sg:allianceUpdate', (d) => setAlliance(d));
     return () => { s.close(); };
   }, []);
+
+  const RANK: Record<string, string> = { leader: '盟主', vice: '副盟主', officer: '官員', member: '盟眾' };
+  const TECH_LABEL: Record<string, string> = { marchSpeed: '行軍加速', troopCapacity: '帶兵擴充', tileYield: '領地增產' };
+  const createAlliance = () => { sockRef.current?.emit('sg:setName', { name: '盟主' + Math.floor(Date.now() % 1000) }); sockRef.current?.emit('sg:createAlliance', { name: allyName.trim() || '蒼天同盟' }); };
+  const joinAlliance = () => { sockRef.current?.emit('sg:setName', { name: '盟眾' + Math.floor(Date.now() % 1000) }); sockRef.current?.emit('sg:joinAlliance', { allianceId: allyCode.trim() }, (r: { ok: boolean; error?: string }) => { if (!r.ok) setNote(r.error ?? '加盟失敗'); }); };
+  const donate = (tech: string) => sockRef.current?.emit('sg:donate', { allianceId: alliance?.id, tech, amount: 500 });
 
   const createRoom = () => sockRef.current?.emit('sg:createRoom', {}, (r: { roomId: string }) => { setRoomId(r.roomId); setSeat('A'); setResult(null); setNote('已開房，把房號給對手'); });
   const joinRoom = () => sockRef.current?.emit('sg:joinRoom', { roomId: joinCode.trim() }, (r: { ok: boolean; seat?: 'A' | 'B'; error?: string }) => {
@@ -91,6 +102,34 @@ export default function Pvp() {
           </div>
         </>
       )}
+
+      {/* §12 同盟 */}
+      <div className="panel" style={{ maxWidth: 620, margin: '16px auto 0' }}>
+        <h2>🛡️ 同盟（§12）</h2>
+        {!alliance ? (
+          <div className="controls" style={{ margin: '4px 0', justifyContent: 'flex-start', gap: 12, flexWrap: 'wrap' }}>
+            <input value={allyName} onChange={(e) => setAllyName(e.target.value)} placeholder="盟名" style={{ width: 120 }} />
+            <button className="fight" onClick={createAlliance} disabled={!connected} style={{ fontSize: 14, padding: '8px 16px' }}>建盟</button>
+            <span>或 <input value={allyCode} onChange={(e) => setAllyCode(e.target.value)} placeholder="盟號 ALxxx" style={{ width: 110 }} /> <button className="fight" onClick={joinAlliance} disabled={!connected} style={{ fontSize: 14, padding: '8px 14px', background: '#3a2e1e' }}>加盟</button></span>
+          </div>
+        ) : (
+          <>
+            <div className="row"><label>同盟</label><span style={{ color: 'var(--gold)', fontWeight: 700 }}>{alliance.name}</span>（盟號 {alliance.id} ｜ {alliance.count}/100 人）</div>
+            <div className="row"><label>成員</label><span>{alliance.members.map((m) => `${m.name}(${RANK[m.rank]}/捐${m.contribution})`).join('　')}</span></div>
+            <div style={{ marginTop: 8 }}>
+              <div style={{ color: 'var(--muted)', fontSize: 13, marginBottom: 6 }}>盟科技（捐 500 推進，全盟加成）：</div>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                {(['marchSpeed', 'troopCapacity', 'tileYield'] as const).map((t) => (
+                  <button key={t} onClick={() => donate(t)} style={{ flex: '1 1 160px', background: '#3a2e1e', border: '1px solid var(--line)', color: 'var(--ink)', borderRadius: 8, padding: '8px 10px', cursor: 'pointer', textAlign: 'left', fontSize: 13 }}>
+                    <b>{TECH_LABEL[t]} Lv.{alliance.tech[t].level}</b>（+{alliance.perks[t]}%）<br />
+                    <span style={{ color: 'var(--gold)' }}>捐 500 推進</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          </>
+        )}
+      </div>
     </>
   );
 }
