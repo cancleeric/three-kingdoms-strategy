@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { resolveBattle, troopMatchup, computeDamage, makeRng } from './combat';
-import { ZHAO_YUN, LU_XUN, GUAN_PING, makeUnit, makeSquad } from './sampleData';
+import { ZHAO_YUN, LU_XUN, GUAN_PING, LU_BU, ZHUGE_LIANG, ROSTER, makeUnit, makeSquad } from './sampleData';
 
 describe('troopMatchup (§7.3 兵種相剋)', () => {
   it('騎克弓 +15%', () => expect(troopMatchup('cavalry', 'bow')).toBeCloseTo(1.15));
@@ -76,5 +76,28 @@ describe('resolveBattle (§8 戰鬥結算)', () => {
     const r = resolveBattle({ attacker: buildA(), defender: buildD(), seed: 20 });
     if (r.winner === 'attacker') expect(r.attackerHpLeft).toBeGreaterThanOrEqual(r.defenderHpLeft);
     if (r.winner === 'defender') expect(r.defenderHpLeft).toBeGreaterThanOrEqual(r.attackerHpLeft);
+  });
+
+  it('多武將佈陣：3 主將隊伍正常結算 (§7.1)', () => {
+    const att = makeSquad([
+      makeUnit(LU_BU, 'cavalry', 3000, 'attacker'),
+      makeUnit(ZHAO_YUN, 'spear', 3000, 'attacker'),
+      makeUnit(ZHUGE_LIANG, 'apparatus', 3000, 'attacker'),
+    ]);
+    const def = makeSquad([
+      makeUnit(LU_XUN, 'bow', 3000, 'defender'),
+      makeUnit(GUAN_PING, 'shield', 3000, 'defender'),
+    ]);
+    const r = resolveBattle({ attacker: att, defender: def, seed: 7 });
+    // 3 名進攻方武將都應在事件日誌中行動過
+    const actors = new Set(r.events.map((e) => e.actorId));
+    expect(actors.has('lubu')).toBe(true);
+    expect(actors.has('zhaoyun')).toBe(true);
+    expect(r.events.length).toBeGreaterThan(0);
+  });
+
+  it('名冊 6 將齊全', () => {
+    expect(ROSTER).toHaveLength(6);
+    expect(new Set(ROSTER.map((h) => h.id)).size).toBe(6);
   });
 });

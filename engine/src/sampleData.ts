@@ -39,6 +39,29 @@ export const GUAN_PING: Hero = { // §4.3 新手贈送
   aptitude: apt('spear'), innate: tactic({ id: 't_guanping_innate', name: '搦戰', type: 'innate', triggerRate: 0.3, coefficient: 1.3 }), tactics: [],
 };
 
+const luBuInnate = tactic({ id: 't_lubu_innate', name: '無雙', type: 'innate', triggerRate: 0.45, coefficient: 2.0, damageKind: 'physical', targets: 2 });
+const zhugeInnate = tactic({ id: 't_zhuge_innate', name: '八陣', type: 'innate', triggerRate: 0.4, coefficient: 1.85, damageKind: 'strategic', targets: 2 });
+const zhouyuInnate = tactic({ id: 't_zhouyu_innate', name: '赤壁', type: 'innate', triggerRate: 0.4, coefficient: 1.9, damageKind: 'strategic', targets: 2 });
+
+export const LU_BU: Hero = {
+  id: 'lubu', name: '呂布', rarity: 6, redStars: 0,
+  stats: { force: 220, intellect: 80, command: 175, speed: 170, politics: 40, charm: 70 },
+  aptitude: apt('cavalry', { spear: 'A' }), innate: luBuInnate, tactics: [genericActive],
+};
+export const ZHUGE_LIANG: Hero = {
+  id: 'zhuge', name: '諸葛亮', rarity: 6, redStars: 0,
+  stats: { force: 90, intellect: 215, command: 175, speed: 140, politics: 200, charm: 175 },
+  aptitude: apt('apparatus', { bow: 'A' }), innate: zhugeInnate, tactics: [],
+};
+export const ZHOU_YU: Hero = {
+  id: 'zhouyu', name: '周瑜', rarity: 6, redStars: 0,
+  stats: { force: 120, intellect: 198, command: 170, speed: 158, politics: 150, charm: 160 },
+  aptitude: apt('bow', { apparatus: 'A' }), innate: zhouyuInnate, tactics: [],
+};
+
+/** 可選武將名冊（沙盒/佈陣用）*/
+export const ROSTER: Hero[] = [ZHAO_YUN, LU_BU, ZHUGE_LIANG, LU_XUN, ZHOU_YU, GUAN_PING];
+
 export function makeUnit(hero: Hero, troopType: TroopType, troops: number, side: BattleUnit['side']): BattleUnit {
   return { hero, troopType, troops, hp: troops, maxHp: troops, side };
 }

@@ -1,15 +1,16 @@
 import { useMemo, useState } from 'react';
 import {
-  ZHAO_YUN, LU_XUN, GUAN_PING,
+  ROSTER,
   makeUnit, makeSquad, resolveBattle,
   TILES, grantXp, leveledHero, attackTile, makeGarrison,
   newCity, produce, upgrade, addResources, troopCapacity, upgradeCost, canAfford, BUILDINGS,
 } from './engine';
 import type { Hero, TroopType, CombatEvent, CampaignHero, TileBattleOutcome, City, BuildingId, Resource } from './engine';
 
-const HEROES: Hero[] = [ZHAO_YUN, LU_XUN, GUAN_PING];
-const HERO_NAME: Record<string, string> = { zhaoyun: '趙雲', luxun: '陸遜', guanping: '關平' };
+const HEROES: Hero[] = ROSTER;
+const HERO_NAME: Record<string, string> = { zhaoyun: '趙雲', lubu: '呂布', zhuge: '諸葛亮', luxun: '陸遜', zhouyu: '周瑜', guanping: '關平' };
 const nameOf = (id: string) => HERO_NAME[id] ?? (id.startsWith('garrison') ? '守將' : id);
+const heroById = (id: string) => HEROES.find((h) => h.id === id)!;
 const TROOPS: { v: TroopType; label: string }[] = [
   { v: 'cavalry', label: '騎兵' }, { v: 'spear', label: '槍兵' },
   { v: 'shield', label: '盾兵' }, { v: 'bow', label: '弓兵' }, { v: 'apparatus', label: '器械' },
@@ -111,30 +112,29 @@ const RES_LABEL: Record<Resource, string> = { food: '糧', wood: '木', stone: '
 const BUILD_ORDER: BuildingId[] = ['barracks', 'farm', 'lumber', 'quarry', 'ironForge', 'mint'];
 
 function Campaign() {
-  const [picked, setPicked] = useState('zhaoyun');
-  const [troop, setTroop] = useState<TroopType>('cavalry');
+  const [formation, setFormation] = useState<{ id: string; troop: TroopType }[]>([{ id: 'zhaoyun', troop: 'cavalry' }]);
   const [started, setStarted] = useState(false);
-  const [ch, setCh] = useState<CampaignHero>({ hero: ZHAO_YUN, level: 1, xp: 0 });
+  const [ch, setCh] = useState<CampaignHero>({ hero: heroById('zhaoyun'), level: 1, xp: 0 });
   const [city, setCity] = useState<City>(newCity());
   const [tileIdx, setTileIdx] = useState(0);
   const [seedCtr, setSeedCtr] = useState(1);
   const [outcome, setOutcome] = useState<(TileBattleOutcome & { events: CombatEvent[] }) | null>(null);
 
   const start = () => {
-    setCh({ hero: HEROES.find((h) => h.id === picked)!, level: 1, xp: 0 });
+    setCh({ hero: heroById(formation[0].id), level: 1, xp: 0 });
     setCity(newCity()); setTileIdx(0); setSeedCtr(1); setOutcome(null); setStarted(true);
   };
 
   const cleared = tileIdx >= TILES.length;
   const tile = cleared ? null : TILES[tileIdx];
   const playerTroops = troopCapacity(city.levels.barracks); // §7.2 帶兵量由兵營等級決定
-  const lh = leveledHero(ch);
+  // 多將佈陣：每名武將依軍隊等級成長，各帶 playerTroops 兵（§7.1）
+  const buildSquad = () => makeSquad(formation.map((f) => makeUnit(leveledHero({ hero: heroById(f.id), level: ch.level, xp: ch.xp }), f.troop, playerTroops, 'attacker')));
 
   const attack = () => {
     if (!tile) return;
-    const squad = makeSquad([makeUnit(lh, troop, playerTroops, 'attacker')]);
-    const out = attackTile(squad, tile, seedCtr);
-    const full = resolveBattle({ attacker: makeSquad([makeUnit(lh, troop, playerTroops, 'attacker')]), defender: makeGarrison(tile), seed: seedCtr });
+    const out = attackTile(buildSquad(), tile, seedCtr);
+    const full = resolveBattle({ attacker: buildSquad(), defender: makeGarrison(tile), seed: seedCtr });
     setOutcome({ ...out, events: full.events });
     setSeedCtr((s) => s + 1);
     // 每次出戰，內政照常產出（§11）
@@ -152,10 +152,23 @@ function Campaign() {
   if (!started) {
     return (
       <>
-        <div className="panel" style={{ maxWidth: 460, margin: '0 auto' }}>
-          <h2>🚩 開始打地戰役</h2>
-          <p className="subtitle" style={{ textAlign: 'left' }}>選一名主將，從荒野 Lv.1 一路打到洛陽。核心循環：打地賺資源 → 蓋城（兵營帶更多兵）→ 打更高地。</p>
-          <HeroPicker hero={picked} troop={troop} onHero={setPicked} onTroop={setTroop} />
+        <div className="panel" style={{ maxWidth: 560, margin: '0 auto' }}>
+          <h2>🚩 開始打地戰役 — 佈陣</h2>
+          <p className="subtitle" style={{ textAlign: 'left' }}>編組最多 3 名武將（§7.1 主將+副將），從荒野 Lv.1 一路打到洛陽。核心循環：打地賺資源 → 蓋城（兵營帶更多兵）→ 打更高地。</p>
+          {formation.map((slot, i) => (
+            <div key={i} style={{ borderTop: '1px solid var(--line)', paddingTop: 8, marginTop: 8 }}>
+              <div className="row"><label>{i === 0 ? '主將' : `副將 ${i}`}</label>
+                <select value={slot.id} onChange={(e) => setFormation((f) => f.map((s, j) => j === i ? { ...s, id: e.target.value } : s))}>
+                  {HEROES.map((h) => <option key={h.id} value={h.id}>{HERO_NAME[h.id]}（{h.rarity}★）</option>)}
+                </select>
+                <select value={slot.troop} onChange={(e) => setFormation((f) => f.map((s, j) => j === i ? { ...s, troop: e.target.value as TroopType } : s))}>
+                  {TROOPS.map((t) => <option key={t.v} value={t.v}>{t.label}</option>)}
+                </select>
+                {formation.length > 1 && <button onClick={() => setFormation((f) => f.filter((_, j) => j !== i))} style={{ flex: '0 0 auto', background: '#5a2a2a', border: 'none', color: '#fff', borderRadius: 6, padding: '6px 10px', cursor: 'pointer' }}>移除</button>}
+              </div>
+            </div>
+          ))}
+          {formation.length < 3 && <div className="controls" style={{ margin: '12px 0 0' }}><button onClick={() => setFormation((f) => [...f, { id: HEROES.find((h) => !f.some((s) => s.id === h.id))?.id ?? 'guanping', troop: 'spear' }])} style={{ background: '#3a2e1e', border: '1px solid var(--line)', color: 'var(--ink)', borderRadius: 8, padding: '8px 16px', cursor: 'pointer' }}>＋ 加入武將</button></div>}
         </div>
         <div className="controls"><button className="fight" onClick={start}>出 征</button></div>
       </>
@@ -166,10 +179,12 @@ function Campaign() {
     <>
       <div className="grid">
         <div className="panel side-att">
-          <h2>🗡️ {nameOf(ch.hero.id)}</h2>
-          <div className="row"><label>等級</label><span>Lv.{ch.level} ／ 50（XP {ch.xp}）</span></div>
-          <div className="row"><label>武力</label><span>{lh.stats.force}（含成長）</span></div>
-          <div className="row"><label>帶兵</label><span>{playerTroops}（兵營 Lv.{city.levels.barracks}）</span></div>
+          <h2>🗡️ 我軍（軍隊 Lv.{ch.level}）</h2>
+          {formation.map((f, i) => (
+            <div className="row" key={i}><label>{i === 0 ? '主將' : `副將${i}`}</label>
+              <span>{nameOf(f.id)} ／ {TROOPS.find((t) => t.v === f.troop)?.label} ／ {playerTroops} 兵</span></div>
+          ))}
+          <div className="row"><label>軍隊</label><span>Lv.{ch.level}／50（XP {ch.xp}）｜ 兵營 Lv.{city.levels.barracks}</span></div>
           <div className="row"><label>進度</label><span>{Math.min(tileIdx, TILES.length)} / {TILES.length} 關</span></div>
         </div>
         <div className="panel side-def">
