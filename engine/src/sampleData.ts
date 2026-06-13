@@ -30,8 +30,22 @@ export const tacticTroopCav: Tactic = tactic({
   effects: [{ kind: 'buff', value: 15, target: 'self' }],
 });
 
+// M3 新增：象兵類戰法（南蠻/吳南方特色）
+// 效果：裝備後主將改用象兵，象兵傷害 +18%（象兵踐踏陣形）
+export const tacticTroopElephant: Tactic = tactic({
+  id: 't_nanban_elephant', name: '南蠻象陣', type: 'troop', triggerRate: 1.0, coefficient: 0,
+  effects: [{ kind: 'buff', value: 18, target: 'self' }],
+});
+
+// M3 新增：水軍類戰法（吳特色）
+// 效果：裝備後主將改用水軍，水軍傷害 +20%（江東水師縱橫水域）
+export const tacticTroopNavy: Tactic = tactic({
+  id: 't_jiangdong_navy', name: '江東水師', type: 'troop', triggerRate: 1.0, coefficient: 0,
+  effects: [{ kind: 'buff', value: 20, target: 'self' }],
+});
+
 const apt = (s: TroopType, rest: Partial<Record<TroopType, 'S' | 'A' | 'B' | 'C'>> = {}) =>
-  ({ cavalry: 'C', spear: 'C', shield: 'C', bow: 'C', apparatus: 'C', [s]: 'S', ...rest } as Hero['aptitude']);
+  ({ cavalry: 'C', spear: 'C', shield: 'C', bow: 'C', apparatus: 'C', sword: 'C', elephant: 'C', navy: 'C', [s]: 'S', ...rest } as Hero['aptitude']);
 
 // 趙雲：蜀，槽 0 有突陣，槽 1 空（示範一槽有一槽空）
 export const ZHAO_YUN: Hero = {
@@ -45,7 +59,7 @@ export const ZHAO_YUN: Hero = {
 export const LU_XUN: Hero = {
   id: 'luxun', name: '陸遜', faction: 'wu', rarity: 6, redStars: 0,
   stats: { force: 110, intellect: 200, command: 165, speed: 150, politics: 160, charm: 140 },
-  aptitude: apt('bow', { apparatus: 'A' }), innate: luXunInnate,
+  aptitude: apt('bow', { apparatus: 'A', navy: 'A' }), innate: luXunInnate,
   learnedSlots: [null, null],
 };
 
@@ -80,7 +94,7 @@ export const ZHUGE_LIANG: Hero = {
 export const ZHOU_YU: Hero = {
   id: 'zhouyu', name: '周瑜', faction: 'wu', rarity: 6, redStars: 0,
   stats: { force: 120, intellect: 198, command: 170, speed: 158, politics: 150, charm: 160 },
-  aptitude: apt('bow', { apparatus: 'A' }), innate: zhouyuInnate,
+  aptitude: apt('bow', { apparatus: 'A', navy: 'S' }), innate: zhouyuInnate,
   learnedSlots: [null, null],
 };
 

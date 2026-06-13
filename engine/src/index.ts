@@ -18,3 +18,5 @@ export * from './worldmap';
 export * from './onboarding';
 
 export * from './tacticbook';
+
+export * from './faction';

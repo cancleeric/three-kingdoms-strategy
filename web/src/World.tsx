@@ -164,7 +164,14 @@ export default function World() {
         <div className="row"><label>我的勢力</label><span>據地 {myTiles} 塊 ｜ 勢力值 <b style={{ color: 'var(--gold)' }}>{myPower}</b></span></div>
         <div className="row"><label>出兵兵種</label>
           <select value={troop} onChange={(e) => setTroop(e.target.value)}>
-            <option value="cavalry">騎兵</option><option value="spear">槍兵</option><option value="shield">盾兵</option><option value="bow">弓兵</option><option value="apparatus">器械</option>
+            <option value="cavalry">騎兵</option>
+            <option value="spear">槍兵</option>
+            <option value="shield">盾兵</option>
+            <option value="bow">弓兵</option>
+            <option value="apparatus">器械</option>
+            <option value="sword">刀盾（M3）</option>
+            <option value="elephant">象兵（M3）</option>
+            <option value="navy">水軍（M3）</option>
           </select>
           <span style={{ color: 'var(--muted)', fontSize: 13 }}>　點亮邊（金框）格送行軍令；己方地塊右鍵建營帳</span>
         </div>
