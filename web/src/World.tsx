@@ -129,6 +129,9 @@ export default function World() {
   const [activeRallies, setActiveRallies] = useState<RallyView[]>([]);
   const [rallyNote, setRallyNote] = useState<string>('');
   const [allyCode, setAllyCode] = useState<string>(''); // M4.5：World 頁同盟加入碼
+  // M5-8：座標地圖——選格檢視 + 局部縮放
+  const [selected, setSelected] = useState<WTile | null>(null);
+  const [zoom, setZoom] = useState(1);
 
   // M4：賽季結算
   const [seasonResult, setSeasonResult] = useState<SeasonSettleResult | null>(null);
@@ -343,7 +346,20 @@ export default function World() {
   return (
     <>
       <div className="panel" style={{ maxWidth: 900, margin: '0 auto' }}>
-        <h2>天下大地圖（M4：賽季 + 集結攻城）｜ {connected ? '已連線' : '連線中…'}</h2>
+        <h2>天下大地圖（M5-8 座標地圖）｜ {connected ? '已連線' : '連線中…'}</h2>
+        {/* M5-8：選格座標檢視 + 局部縮放 */}
+        <div className="row"><label>座標檢視</label>
+          {selected ? (
+            <span style={{ fontSize: 13 }}>
+              <b style={{ color: 'var(--gold)' }}>({selected.q},{selected.r})</b>　{STATE_NAME[selected.state] ?? selected.state}{selected.landmark ? `·${selected.landmark}` : ''}　Lv.{selected.level}（守軍 {selected.level * 800} 兵）　{selected.owner === me ? '己方' : selected.owner ? '他人' : '中立'}{selected.tent ? '·營帳' : ''}
+            </span>
+          ) : <span style={{ color: 'var(--muted)', fontSize: 13 }}>點地圖任一格檢視座標/州/守軍</span>}
+          <span style={{ marginLeft: 'auto' }}>
+            <button onClick={() => setZoom((z) => Math.min(2.5, z + 0.25))} style={{ padding: '2px 10px', marginRight: 4, background: '#3a2e1e', color: 'var(--ink)', border: '1px solid var(--line)', borderRadius: 4, cursor: 'pointer' }}>＋局部</button>
+            <button onClick={() => setZoom((z) => Math.max(1, z - 0.25))} style={{ padding: '2px 10px', background: '#3a2e1e', color: 'var(--ink)', border: '1px solid var(--line)', borderRadius: 4, cursor: 'pointer' }}>－世界</button>
+            <span style={{ marginLeft: 6, color: 'var(--muted)', fontSize: 12 }}>×{zoom.toFixed(2)}</span>
+          </span>
+        </div>
         <div className="row"><label>我的勢力</label><span>據地 {myTiles} 塊 ｜ 勢力值 <b style={{ color: 'var(--gold)' }}>{myPower}</b>
           {myFaction && <span style={{ marginLeft: 8, padding: '2px 8px', background: FACTION_COLOR[myFaction], borderRadius: 4, fontSize: 13, color: '#fff' }}>{FACTION_NAME_ZH[myFaction]}陣營</span>}
         </span></div>
@@ -464,7 +480,7 @@ export default function World() {
 
       <div className="panel" style={{ maxWidth: 900, margin: '12px auto 0', overflow: 'auto' }}>
         {layout ? (
-          <svg viewBox={layout.vb} style={{ width: '100%', height: 'auto', maxHeight: 560 }}>
+          <svg viewBox={layout.vb} style={{ width: `${100 * zoom}%`, height: 'auto', maxHeight: 560 * zoom }}>
             {layout.placed.map(({ t, x, y }) => {
               const owned = t.owner === me;
               const marching = isMarching(t);
@@ -474,7 +490,7 @@ export default function World() {
               const isCapital = t.level >= 6; // 州城級格，可發起集結
               return (
                 <g key={hexKey(t.q, t.r)} style={{ cursor: marchable || owned ? 'pointer' : 'default' }}
-                  onClick={() => march(t)}
+                  onClick={() => { setSelected(t); march(t); }}
                   onContextMenu={(e) => {
                     e.preventDefault();
                     if (owned) {
