@@ -23,8 +23,15 @@ import {
 } from './engine/tacticbook';
 import { FACTION_NAME } from './engine/types';
 
-// ── 所有範例戰法（書庫可習得的來源）─────────────────────────────
-const ALL_TACTICS: Tactic[] = [genericActive, tacticFormation, tacticTroopCav];
+// ── 所有戰法目錄（書庫可習得來源）──────────────────────────────
+// = 範例可學戰法 + 全武將自帶戰法（拆書取得的書才看得到、學得到）。依 id 去重。
+const ALL_TACTICS: Tactic[] = (() => {
+  const seed: Tactic[] = [genericActive, tacticFormation, tacticTroopCav];
+  const innates = [...ROSTER, ...RECRUIT_POOL].map((h) => h.innate);
+  const byId = new Map<string, Tactic>();
+  for (const t of [...seed, ...innates]) if (!byId.has(t.id)) byId.set(t.id, t);
+  return [...byId.values()];
+})();
 
 // ── 兵種適性 label ────────────────────────────────────────────
 const APTITUDE_LABEL: Record<string, string> = {
