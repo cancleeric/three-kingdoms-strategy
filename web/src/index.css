@@ -1,0 +1,40 @@
+:root {
+  --bg: #1a1410;
+  --panel: #2a2018;
+  --ink: #f0e6d2;
+  --muted: #b8a888;
+  --accent: #8b2e2e;
+  --gold: #c9a227;
+  --line: #4a3a2a;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: "PingFang TC", "Noto Sans TC", system-ui, sans-serif;
+}
+.wrap { max-width: 900px; margin: 0 auto; padding: 24px 16px 60px; }
+h1 { font-size: 28px; text-align: center; color: var(--gold); margin: 8px 0 4px; }
+.subtitle { text-align: center; color: var(--muted); margin: 0 0 24px; font-size: 14px; }
+.grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+@media (max-width: 640px) { .grid { grid-template-columns: 1fr; } }
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px; }
+.panel h2 { margin: 0 0 12px; font-size: 18px; }
+.side-att h2 { color: #d98c5f; }
+.side-def h2 { color: #6f9fd8; }
+.row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; font-size: 14px; }
+.row label { width: 64px; color: var(--muted); }
+select, input { background: #1a1410; color: var(--ink); border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; font-size: 14px; flex: 1; }
+.controls { display: flex; gap: 12px; align-items: center; justify-content: center; margin: 20px 0; flex-wrap: wrap; }
+button.fight { background: var(--accent); color: #fff; border: none; border-radius: 8px; padding: 12px 32px; font-size: 16px; font-weight: 700; cursor: pointer; }
+button.fight:hover { background: #a33; }
+.result { text-align: center; margin: 16px 0; }
+.winner { font-size: 24px; font-weight: 800; color: var(--gold); }
+.log { background: #14100c; border: 1px solid var(--line); border-radius: 8px; padding: 12px; max-height: 360px; overflow-y: auto; font-size: 13px; line-height: 1.6; }
+.turn-head { color: var(--gold); font-weight: 700; margin: 8px 0 4px; border-bottom: 1px solid var(--line); }
+.ev { color: var(--muted); }
+.ev .att { color: #d98c5f; }
+.ev .def { color: #6f9fd8; }
+.ev .dmg { color: #e06666; font-weight: 600; }
+.phase-tag { display: inline-block; min-width: 38px; color: var(--gold); }
