@@ -7,8 +7,11 @@
 import { createServer } from 'http';
 import { Server } from 'socket.io';
 import { resolvePvp, type PvpSubmission } from './pvp';
+import { marchBattle } from './world';
 import { newAlliance, joinAlliance, leaveAlliance, donate, alliancePerks, memberCount } from '../../engine/src/alliance';
 import type { Alliance, AllianceTechId } from '../../engine/src/alliance';
+import { genWorld, spawnPlayer, captureTile, buildTent, powerScore, hexKey } from '../../engine/src/worldmap';
+import type { Axial } from '../../engine/src/worldmap';
 
 const PORT = Number(process.env.PORT ?? 3300);
 const SOCKET_PATH = process.env.SOCKET_PATH ?? '/sanguo/socket';
@@ -28,6 +31,15 @@ const allianceCode = (() => { let n = 100; return () => 'AL' + (++n); })();
 const playerName = new Map<string, string>(); // socketId → 名稱
 function allianceView(a: Alliance) {
   return { id: a.id, name: a.name, count: memberCount(a), members: Object.values(a.members), tech: a.tech, perks: alliancePerks(a) };
+}
+
+// §10 世界地圖（單一共享伺服器世界）
+let world = genWorld(Number(process.env.WORLD_RADIUS ?? 5));
+function worldView() {
+  const tiles = Object.values(world.tiles).map((t) => ({ q: t.coord.q, r: t.coord.r, level: t.level, state: t.state, owner: t.owner, tent: t.tent, landmark: t.landmark }));
+  const power: Record<string, number> = {};
+  for (const pid of Object.keys(world.spawns)) power[pid] = powerScore(world, pid);
+  return { radius: world.radius, tiles, power };
 }
 
 const httpServer = createServer((_req, res) => { res.writeHead(200); res.end('sanguo-pvp ok'); });
@@ -96,6 +108,34 @@ io.on('connection', (socket) => {
     const updated = donate(a, socket.id, d.tech, d.amount);
     alliances.set(a.id, updated);
     io.to('al:' + a.id).emit('sg:allianceUpdate', allianceView(updated));
+  });
+
+  // ── §10 世界地圖 ──
+  socket.on('sg:enterWorld', (_d, cb?: (r: { you: string }) => void) => {
+    world = spawnPlayer(world, socket.id);
+    socket.join('world');
+    cb?.({ you: socket.id });
+    io.to('world').emit('sg:worldUpdate', worldView());
+  });
+
+  // march 出兵攻佔中立地塊（先打守軍，贏了翻面）
+  socket.on('sg:march', (d: { coord: Axial; submission: PvpSubmission }, cb?: (r: { ok: boolean; won?: boolean; turns?: number; error?: string }) => void) => {
+    const k = hexKey(d.coord);
+    const tile = world.tiles[k];
+    if (!tile) return cb?.({ ok: false, error: '地塊不存在' });
+    const seed = (Math.abs(d.coord.q * 73856093) ^ Math.abs(d.coord.r * 19349663)) % 2147483647;
+    const out = marchBattle(d.submission, tile.level, seed);
+    if (!out.won) return cb?.({ ok: true, won: false, turns: out.turns });
+    const cap = captureTile(world, socket.id, d.coord);
+    if (!cap.ok) return cb?.({ ok: false, error: cap.error });
+    world = cap.map;
+    cb?.({ ok: true, won: true, turns: out.turns });
+    io.to('world').emit('sg:worldUpdate', worldView());
+  });
+
+  socket.on('sg:buildTent', (d: { coord: Axial }) => {
+    world = buildTent(world, socket.id, d.coord);
+    io.to('world').emit('sg:worldUpdate', worldView());
   });
 
   socket.on('disconnect', () => {
