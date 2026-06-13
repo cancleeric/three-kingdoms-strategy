@@ -20,3 +20,5 @@ export * from './onboarding';
 export * from './tacticbook';
 
 export * from './faction';
+
+export * from './rally';
