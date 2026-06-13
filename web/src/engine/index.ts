@@ -3,3 +3,4 @@ export * from './types';
 export * from './combat';
 export * from './sampleData';
 export * from './campaign';
+export * from './city';

@@ -3,8 +3,9 @@ import {
   ZHAO_YUN, LU_XUN, GUAN_PING,
   makeUnit, makeSquad, resolveBattle,
   TILES, grantXp, leveledHero, attackTile, makeGarrison,
+  newCity, produce, upgrade, addResources, troopCapacity, upgradeCost, canAfford, BUILDINGS,
 } from './engine';
-import type { Hero, TroopType, CombatEvent, CampaignHero, TileBattleOutcome } from './engine';
+import type { Hero, TroopType, CombatEvent, CampaignHero, TileBattleOutcome, City, BuildingId, Resource } from './engine';
 
 const HEROES: Hero[] = [ZHAO_YUN, LU_XUN, GUAN_PING];
 const HERO_NAME: Record<string, string> = { zhaoyun: '趙雲', luxun: '陸遜', guanping: '關平' };
@@ -106,51 +107,54 @@ function Sandbox() {
 }
 
 // ── 打地戰役模式 ───────────────────────────────────────────────
+const RES_LABEL: Record<Resource, string> = { food: '糧', wood: '木', stone: '石', iron: '鐵', silver: '銀' };
+const BUILD_ORDER: BuildingId[] = ['barracks', 'farm', 'lumber', 'quarry', 'ironForge', 'mint'];
+
 function Campaign() {
   const [picked, setPicked] = useState('zhaoyun');
   const [troop, setTroop] = useState<TroopType>('cavalry');
   const [started, setStarted] = useState(false);
   const [ch, setCh] = useState<CampaignHero>({ hero: ZHAO_YUN, level: 1, xp: 0 });
+  const [city, setCity] = useState<City>(newCity());
   const [tileIdx, setTileIdx] = useState(0);
-  const [silver, setSilver] = useState(0);
   const [seedCtr, setSeedCtr] = useState(1);
   const [outcome, setOutcome] = useState<(TileBattleOutcome & { events: CombatEvent[] }) | null>(null);
 
   const start = () => {
     setCh({ hero: HEROES.find((h) => h.id === picked)!, level: 1, xp: 0 });
-    setTileIdx(0); setSilver(0); setSeedCtr(1); setOutcome(null); setStarted(true);
+    setCity(newCity()); setTileIdx(0); setSeedCtr(1); setOutcome(null); setStarted(true);
   };
 
   const cleared = tileIdx >= TILES.length;
   const tile = cleared ? null : TILES[tileIdx];
-  const playerTroops = 2000 + ch.level * 120; // §7.2 帶兵量隨等級
+  const playerTroops = troopCapacity(city.levels.barracks); // §7.2 帶兵量由兵營等級決定
   const lh = leveledHero(ch);
 
   const attack = () => {
     if (!tile) return;
     const squad = makeSquad([makeUnit(lh, troop, playerTroops, 'attacker')]);
-    // attackTile 取得結果（勝負/獎勵）；再以相同守軍+seed 重跑取戰報事件（決定性，結果一致）
     const out = attackTile(squad, tile, seedCtr);
-    const full = resolveBattle({
-      attacker: makeSquad([makeUnit(lh, troop, playerTroops, 'attacker')]),
-      defender: makeGarrison(tile),
-      seed: seedCtr,
-    });
+    const full = resolveBattle({ attacker: makeSquad([makeUnit(lh, troop, playerTroops, 'attacker')]), defender: makeGarrison(tile), seed: seedCtr });
     setOutcome({ ...out, events: full.events });
     setSeedCtr((s) => s + 1);
+    // 每次出戰，內政照常產出（§11）
+    setCity((c) => produce(c, 1));
     if (out.won && out.reward) {
       setCh((c) => grantXp(c, out.reward!.xp));
-      setSilver((s) => s + out.reward!.silver);
+      // 打地獎勵：銀 + 糧木石（§11 地塊產資源）
+      setCity((c) => addResources(c, { silver: out.reward!.silver, food: out.reward!.xp, wood: out.reward!.xp, stone: Math.round(out.reward!.xp * 0.6) }));
       setTileIdx((i) => i + 1);
     }
   };
+
+  const doBuild = (b: BuildingId) => setCity((c) => upgrade(c, b).city);
 
   if (!started) {
     return (
       <>
         <div className="panel" style={{ maxWidth: 460, margin: '0 auto' }}>
           <h2>🚩 開始打地戰役</h2>
-          <p className="subtitle" style={{ textAlign: 'left' }}>選一名主將，從荒野 Lv.1 一路打到洛陽。贏一關升級、拿銀錢，守軍逐關變強。</p>
+          <p className="subtitle" style={{ textAlign: 'left' }}>選一名主將，從荒野 Lv.1 一路打到洛陽。核心循環：打地賺資源 → 蓋城（兵營帶更多兵）→ 打更高地。</p>
           <HeroPicker hero={picked} troop={troop} onHero={setPicked} onTroop={setTroop} />
         </div>
         <div className="controls"><button className="fight" onClick={start}>出 征</button></div>
@@ -165,8 +169,8 @@ function Campaign() {
           <h2>🗡️ {nameOf(ch.hero.id)}</h2>
           <div className="row"><label>等級</label><span>Lv.{ch.level} ／ 50（XP {ch.xp}）</span></div>
           <div className="row"><label>武力</label><span>{lh.stats.force}（含成長）</span></div>
-          <div className="row"><label>帶兵</label><span>{playerTroops}（{TROOPS.find((t) => t.v === troop)?.label}）</span></div>
-          <div className="row"><label>銀錢</label><span>{silver}</span></div>
+          <div className="row"><label>帶兵</label><span>{playerTroops}（兵營 Lv.{city.levels.barracks}）</span></div>
+          <div className="row"><label>進度</label><span>{Math.min(tileIdx, TILES.length)} / {TILES.length} 關</span></div>
         </div>
         <div className="panel side-def">
           <h2>🏯 {cleared ? '全境平定' : tile!.name}</h2>
@@ -175,9 +179,30 @@ function Campaign() {
             <div className="row"><label>建議</label><span>英雄 Lv.{tile!.recHeroLv}+</span></div>
             <div className="row"><label>獎勵</label><span>XP {tile!.reward.xp} ／ 銀 {tile!.reward.silver}</span></div>
           </>}
-          <div className="row"><label>進度</label><span>{Math.min(tileIdx, TILES.length)} / {TILES.length} 關</span></div>
         </div>
       </div>
+
+      {/* 城建面板（§9/§11）*/}
+      <div className="panel" style={{ marginTop: 16 }}>
+        <h2>🏛️ 城建 ｜ 資源：{(['food', 'wood', 'stone', 'iron', 'silver'] as Resource[]).map((r) => `${RES_LABEL[r]} ${city.resources[r]}`).join('　')}</h2>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+          {BUILD_ORDER.map((b) => {
+            const lv = city.levels[b];
+            const cost = upgradeCost(b, lv);
+            const afford = canAfford(city.resources, cost) && lv < 25;
+            const costStr = (Object.keys(cost) as Resource[]).filter((k) => cost[k] > 0).map((k) => `${RES_LABEL[k]}${cost[k]}`).join('/');
+            return (
+              <button key={b} onClick={() => doBuild(b)} disabled={!afford}
+                style={{ flex: '1 1 140px', background: afford ? '#3a2e1e' : '#241c14', color: afford ? 'var(--ink)' : '#666', border: '1px solid var(--line)', borderRadius: 8, padding: '8px 10px', cursor: afford ? 'pointer' : 'not-allowed', textAlign: 'left', fontSize: 13 }}>
+                <b>{BUILDINGS[b].name} Lv.{lv}</b><br />
+                <span style={{ color: 'var(--muted)' }}>{BUILDINGS[b].desc}</span><br />
+                <span style={{ color: afford ? 'var(--gold)' : '#666' }}>升級：{costStr}</span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
       <div className="controls">
         {cleared
           ? <div className="winner">🎉 攻克洛陽，問鼎天下！</div>
@@ -188,7 +213,7 @@ function Campaign() {
         <>
           <div className="result">
             <div className="winner" style={{ color: outcome.won ? '#c9a227' : '#e06666' }}>{outcome.won ? `攻克 ${outcome.tile.name}！` : `攻打 ${outcome.tile.name} 失敗`}</div>
-            <div className="subtitle">{outcome.turns} 回合 ｜ 我軍剩 {outcome.playerHpLeft} ｜ 守軍剩 {outcome.garrisonHpLeft}{outcome.reward ? ` ｜ +XP ${outcome.reward.xp} +銀 ${outcome.reward.silver}` : ''}</div>
+            <div className="subtitle">{outcome.turns} 回合 ｜ 我軍剩 {outcome.playerHpLeft} ｜ 守軍剩 {outcome.garrisonHpLeft}{outcome.reward ? ` ｜ +XP ${outcome.reward.xp} +資源` : ''}</div>
           </div>
           <BattleLog events={outcome.events} />
         </>
