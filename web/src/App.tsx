@@ -4,6 +4,7 @@ import World from './World';
 import Onboarding from './Onboarding';
 import TacticConfig from './TacticConfig';
 import { applyConfiguredTactics } from './tacticStore';
+import { applyHeroAdvancement } from './advancementStore';
 import {
   ROSTER, RECRUIT_POOL, GUAN_PING,
   makeUnit, makeSquad, resolveBattle, makeRng,
@@ -221,8 +222,9 @@ function Campaign() {
   // 多將佈陣：每名武將依軍隊等級成長，各帶該兵種容量兵（§7.1）
   // M1.5：套用戰法配置頁的 deck，讓打地實戰吃到玩家配置的戰法
   // M5-3：軍師（formation 中指定一將）以其智力給全隊增益
-  const advisorHero = advisorId && formation.some((f) => f.id === advisorId) ? leveledHero({ hero: heroById(advisorId), level: ch.level, xp: ch.xp }) : null;
-  const buildSquad = () => applyAdvisor(makeSquad(formation.map((f) => makeUnit(leveledHero({ hero: applyConfiguredTactics(heroById(f.id)), level: ch.level, xp: ch.xp }), f.troop, capacityForTroop(city, f.troop), 'attacker'))), advisorHero);
+  const advisorHero = advisorId && formation.some((f) => f.id === advisorId) ? leveledHero({ hero: applyHeroAdvancement(heroById(advisorId)), level: ch.level, xp: ch.xp }) : null;
+  // M5-4：套進階加成 → M1.5 戰法配置 → 等級成長；M5-3 軍師加成最後套全隊
+  const buildSquad = () => applyAdvisor(makeSquad(formation.map((f) => makeUnit(leveledHero({ hero: applyConfiguredTactics(applyHeroAdvancement(heroById(f.id))), level: ch.level, xp: ch.xp }), f.troop, capacityForTroop(city, f.troop), 'attacker'))), advisorHero);
 
   const attack = () => {
     if (!tile) return;

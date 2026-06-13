@@ -26,3 +26,5 @@ export * from './rally';
 export * from './stamina';
 
 export * from './advisor';
+
+export * from './advancement';

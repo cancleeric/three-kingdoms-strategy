@@ -11,6 +11,8 @@
 
 import { useEffect, useState } from 'react';
 import { loadTacticConfig, saveTacticConfig } from './tacticStore';
+import { loadAdvancement, setAdvanceLevel } from './advancementStore';
+import { advanceCost, advancementBonus, ADVANCE_MAX } from './engine';
 import type { Hero, Tactic, TacticLibrary, TacticType } from './engine/types';
 import {
   ROSTER, RECRUIT_POOL,
@@ -88,17 +90,22 @@ const TYPE_COLOR: Partial<Record<TacticType, string>> = {
 function HeroTacticCard({
   hero,
   lib,
+  advanceLevel,
+  onAdvance,
   onLearnSlot,
   onUpgrade,
   onClearSlot,
 }: {
   hero: Hero;
   lib: TacticLibrary;
+  advanceLevel: number;
+  onAdvance: () => void;
   onLearnSlot: (slotIdx: 0 | 1) => void;
   onUpgrade: (tacticId: string) => void;
   onClearSlot: (slotIdx: 0 | 1) => void;
 }) {
   const bestAptitude = Object.entries(hero.aptitude).find(([, v]) => v === 'S');
+  const advCost = advanceCost(advanceLevel);
 
   return (
     <div style={style.panel}>
@@ -109,6 +116,17 @@ function HeroTacticCard({
         {bestAptitude && (
           <span style={style.tag('#6a3a6a')}>{APTITUDE_LABEL[bestAptitude[0]]} S</span>
         )}
+      </div>
+
+      {/* M5-4 進階／突破 */}
+      <div style={{ ...style.row, marginBottom: 10, gap: 10 }}>
+        <span style={{ fontSize: 13, color: '#8a7a5a' }}>進階</span>
+        <span>{'◆'.repeat(advanceLevel)}{'◇'.repeat(ADVANCE_MAX - advanceLevel)}</span>
+        <span style={{ color: 'var(--gold)', fontSize: 13 }}>（全屬性 +{Math.round(advancementBonus(advanceLevel) * 100)}%）</span>
+        <button onClick={onAdvance} disabled={advCost === null}
+          style={{ padding: '3px 12px', background: advCost === null ? '#333' : '#7a5c12', color: '#fff', border: 'none', borderRadius: 4, cursor: advCost === null ? 'not-allowed' : 'pointer', fontSize: 12 }}>
+          {advCost === null ? '已滿階' : `進階（銀 ${advCost}）`}
+        </button>
       </div>
 
       {/* 自帶戰法 */}
@@ -298,6 +316,8 @@ export default function TacticConfig() {
   const [lib, setLib] = useState<TacticLibrary>(() => loadTacticConfig()?.library ?? INITIAL_LIBRARY);
   const [activeSlot, setActiveSlot] = useState<0 | 1 | null>(null);
   const [message, setMessage] = useState<string>('');
+  // M5-4 進階等級（heroId → level，持久化於 advancementStore）
+  const [advancement, setAdvancement] = useState<Record<string, number>>(() => loadAdvancement());
 
   // M1.5：配置任一變動即持久化，讓打地戰役/沙盒/PvP 實戰吃到
   useEffect(() => {
@@ -307,6 +327,16 @@ export default function TacticConfig() {
   }, [heroStates, lib]);
 
   const hero = heroStates[selectedHeroId] ?? ROSTER[0];
+
+  // M5-4：進階（提升等級並持久化）
+  const handleAdvance = () => {
+    const cur = advancement[hero.id] ?? 0;
+    if (cur >= ADVANCE_MAX) { showMsg('已達最高階'); return; }
+    const next = cur + 1;
+    setAdvanceLevel(hero.id, next);
+    setAdvancement((m) => ({ ...m, [hero.id]: next }));
+    showMsg(`${nameOf(hero.id)} 進階至 ${next} 階（全屬性 +${Math.round(advancementBonus(next) * 100)}%）`);
+  };
 
   const showMsg = (msg: string) => {
     setMessage(msg);
@@ -408,6 +438,8 @@ export default function TacticConfig() {
           <HeroTacticCard
             hero={hero}
             lib={lib}
+            advanceLevel={advancement[hero.id] ?? 0}
+            onAdvance={handleAdvance}
             onLearnSlot={handleLearnSlot}
             onUpgrade={handleUpgrade}
             onClearSlot={handleClearSlot}
