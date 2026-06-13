@@ -9,7 +9,7 @@ import type { CampaignHero } from './campaign';
 import type { City } from './city';
 import type { Roster } from './gacha';
 
-export const SAVE_VERSION = 3;
+export const SAVE_VERSION = 4; // M5-1 兵營分兵種，city schema 變更
 
 export interface CampaignState {
   formation: { id: string; troop: TroopType }[];

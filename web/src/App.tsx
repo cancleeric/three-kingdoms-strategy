@@ -8,7 +8,7 @@ import {
   ROSTER, RECRUIT_POOL, GUAN_PING,
   makeUnit, makeSquad, resolveBattle, makeRng,
   TILES, grantXp, leveledHero, attackTile, makeGarrison,
-  newCity, produce, upgrade, addResources, troopCapacity, upgradeCost, canAfford, BUILDINGS,
+  newCity, produce, upgrade, addResources, capacityForTroop, upgradeCost, canAfford, BUILDINGS,
   serializeCampaign, deserializeCampaign,
   newRoster, recruit, ownedList, RECRUIT_COST,
   newAccount, endAndAdvance, SEASON_NAME,
@@ -129,7 +129,7 @@ function Sandbox() {
 
 // ── 打地戰役模式 ───────────────────────────────────────────────
 const RES_LABEL: Record<Resource, string> = { food: '糧', wood: '木', stone: '石', iron: '鐵', silver: '銀' };
-const BUILD_ORDER: BuildingId[] = ['barracks', 'farm', 'lumber', 'quarry', 'ironForge', 'mint'];
+const BUILD_ORDER: BuildingId[] = ['cavalryCamp', 'spearCamp', 'shieldCamp', 'bowCamp', 'farm', 'lumber', 'quarry', 'ironForge', 'mint'];
 
 function Campaign() {
   const [formation, setFormation] = useState<{ id: string; troop: TroopType }[]>([{ id: 'guanping', troop: 'spear' }]);
@@ -181,7 +181,7 @@ function Campaign() {
     capture1: tileIdx >= 1,
     build4: ['farm', 'lumber', 'quarry', 'ironForge'].every((b) => city.levels[b as BuildingId] >= 1),
     equipHero: formation.some((f) => f.id === 'guanping'),
-    barracks3: city.levels.barracks >= 3,
+    barracks3: city.levels.cavalryCamp >= 3,
     joinAlliance: false,
   };
 
@@ -208,10 +208,10 @@ function Campaign() {
 
   const cleared = tileIdx >= TILES.length;
   const tile = cleared ? null : TILES[tileIdx];
-  const playerTroops = troopCapacity(city.levels.barracks); // §7.2 帶兵量由兵營等級決定
-  // 多將佈陣：每名武將依軍隊等級成長，各帶 playerTroops 兵（§7.1）
+  // M5-1：每將帶兵量由其兵種對應的兵營等級決定（騎走騎兵營、槍走槍兵營…）
+  // 多將佈陣：每名武將依軍隊等級成長，各帶該兵種容量兵（§7.1）
   // M1.5：套用戰法配置頁的 deck，讓打地實戰吃到玩家配置的戰法
-  const buildSquad = () => makeSquad(formation.map((f) => makeUnit(leveledHero({ hero: applyConfiguredTactics(heroById(f.id)), level: ch.level, xp: ch.xp }), f.troop, playerTroops, 'attacker')));
+  const buildSquad = () => makeSquad(formation.map((f) => makeUnit(leveledHero({ hero: applyConfiguredTactics(heroById(f.id)), level: ch.level, xp: ch.xp }), f.troop, capacityForTroop(city, f.troop), 'attacker')));
 
   const attack = () => {
     if (!tile) return;
@@ -278,7 +278,7 @@ function Campaign() {
             </div>
           ))}
           {formation.length < 3 && ownedHeroes.length > formation.length && <div style={{ marginBottom: 8 }}><button onClick={() => setFormation((f) => [...f, { id: ownedHeroes.find((h) => !f.some((s) => s.id === h.id))!.id, troop: 'spear' }])} style={{ background: '#3a2e1e', border: '1px solid var(--line)', color: 'var(--ink)', borderRadius: 8, padding: '6px 14px', cursor: 'pointer', fontSize: 13 }}>＋ 編入副將</button></div>}
-          <div className="row"><label>軍隊</label><span>Lv.{ch.level}／50（XP {ch.xp}）｜ 兵營 Lv.{city.levels.barracks} ｜ 各 {playerTroops} 兵</span></div>
+          <div className="row"><label>軍隊</label><span>Lv.{ch.level}／50（XP {ch.xp}）｜ {formation.map((f) => `${TROOPS.find((t) => t.v === f.troop)?.label} ${capacityForTroop(city, f.troop)}兵`).join('　')}</span></div>
           <div className="row"><label>進度</label><span>{Math.min(tileIdx, TILES.length)} / {TILES.length} 關</span></div>
         </div>
         <div className="panel side-def">

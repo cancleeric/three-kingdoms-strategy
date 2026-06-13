@@ -4,6 +4,7 @@
  * 串起核心循環（§3）：打地賺資源 → 蓋城變強 → 帶更多兵 → 打更高地。
  * 純資料 + 純函式，可單元測試。
  */
+import type { TroopType } from './types';
 
 // ── §11.1 資源 ─────────────────────────────────────────────────
 export type Resource = 'food' | 'wood' | 'stone' | 'iron' | 'silver';
@@ -12,13 +13,16 @@ export type Resources = Record<Resource, number>;
 export const emptyResources = (): Resources => ({ food: 0, wood: 0, stone: 0, iron: 0, silver: 0 });
 
 // ── §9.1 建築 ──────────────────────────────────────────────────
-export type BuildingId = 'farm' | 'lumber' | 'quarry' | 'ironForge' | 'mint' | 'barracks';
+// M5-1：兵營分兵種——騎/槍/盾/弓營各自等級，提升對應兵種的帶兵量（對齊真實《三戰》）。
+export type BuildingId =
+  | 'farm' | 'lumber' | 'quarry' | 'ironForge' | 'mint'
+  | 'cavalryCamp' | 'spearCamp' | 'shieldCamp' | 'bowCamp';
 
 export interface BuildingDef {
   id: BuildingId;
   name: string;
   desc: string;
-  /** 每級每 tick 產出的資源（barracks 不產資源，產帶兵量）*/
+  /** 每級每 tick 產出的資源（兵營不產資源，產對應兵種帶兵量）*/
   produces?: { res: Resource; perLevel: number };
 }
 
@@ -28,7 +32,18 @@ export const BUILDINGS: Record<BuildingId, BuildingDef> = {
   quarry: { id: 'quarry', name: '採石場', desc: '產石', produces: { res: 'stone', perLevel: 15 } },
   ironForge: { id: 'ironForge', name: '冶鐵坊', desc: '產鐵', produces: { res: 'iron', perLevel: 12 } },
   mint: { id: 'mint', name: '錢莊', desc: '產銀錢（F2P 命脈）', produces: { res: 'silver', perLevel: 25 } },
-  barracks: { id: 'barracks', name: '兵營', desc: '提升每將帶兵量' },
+  cavalryCamp: { id: 'cavalryCamp', name: '騎兵營', desc: '提升騎兵帶兵量' },
+  spearCamp: { id: 'spearCamp', name: '槍兵營', desc: '提升槍／象兵帶兵量' },
+  shieldCamp: { id: 'shieldCamp', name: '盾兵營', desc: '提升盾／刀盾帶兵量' },
+  bowCamp: { id: 'bowCamp', name: '弓兵營', desc: '提升弓／器械／水軍帶兵量' },
+};
+
+// 8 兵種 → 4 兵營映射
+export const TROOP_CAMP: Record<TroopType, BuildingId> = {
+  cavalry: 'cavalryCamp',
+  spear: 'spearCamp', elephant: 'spearCamp',
+  shield: 'shieldCamp', sword: 'shieldCamp',
+  bow: 'bowCamp', apparatus: 'bowCamp', navy: 'bowCamp',
 };
 
 export interface City {
@@ -38,7 +53,7 @@ export interface City {
 
 export function newCity(): City {
   return {
-    levels: { farm: 1, lumber: 1, quarry: 1, ironForge: 0, mint: 1, barracks: 1 },
+    levels: { farm: 1, lumber: 1, quarry: 1, ironForge: 0, mint: 1, cavalryCamp: 1, spearCamp: 1, shieldCamp: 1, bowCamp: 1 },
     resources: { food: 200, wood: 200, stone: 100, iron: 0, silver: 100 },
   };
 }
@@ -49,7 +64,8 @@ export function upgradeCost(b: BuildingId, currentLevel: number): Resources {
   const base = Math.round(80 * Math.pow(1.5, next - 1));
   // 不同建築吃不同主資源，外加少量通用木/石
   const main: Partial<Record<BuildingId, Resource>> = {
-    farm: 'wood', lumber: 'stone', quarry: 'wood', ironForge: 'stone', mint: 'iron', barracks: 'iron',
+    farm: 'wood', lumber: 'stone', quarry: 'wood', ironForge: 'stone', mint: 'iron',
+    cavalryCamp: 'iron', spearCamp: 'iron', shieldCamp: 'iron', bowCamp: 'iron',
   };
   const cost = emptyResources();
   cost[main[b] ?? 'wood'] += base;
@@ -89,6 +105,11 @@ export function addResources(city: City, add: Partial<Resources>): City {
 
 // ── §7.2 兵營等級 → 每將帶兵量 ─────────────────────────────────
 // Lv.5≈1000、Lv.10≈3000（GDD），線性內插放大基底。
-export function troopCapacity(barracksLevel: number): number {
-  return 600 + barracksLevel * 240;
+export function troopCapacity(campLevel: number): number {
+  return 600 + campLevel * 240;
+}
+
+// M5-1：某兵種的帶兵量 = 其對應兵營等級的容量。
+export function capacityForTroop(city: City, troop: TroopType): number {
+  return troopCapacity(city.levels[TROOP_CAMP[troop]]);
 }

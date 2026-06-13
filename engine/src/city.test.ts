@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { newCity, produce, upgrade, upgradeCost, canAfford, troopCapacity, addResources, BUILDINGS } from './city';
+import { newCity, produce, upgrade, upgradeCost, canAfford, troopCapacity, capacityForTroop, addResources, BUILDINGS } from './city';
 
 describe('city — 城建+資源經濟 (§9/§11)', () => {
   it('新城有基礎建築與起始資源', () => {
@@ -34,8 +34,21 @@ describe('city — 城建+資源經濟 (§9/§11)', () => {
 
   it('資源不足無法升級', () => {
     const c = newCity(); // iron=0
-    const r = upgrade({ ...c, resources: { food: 0, wood: 0, stone: 0, iron: 0, silver: 0 } }, 'barracks');
+    const r = upgrade({ ...c, resources: { food: 0, wood: 0, stone: 0, iron: 0, silver: 0 } }, 'cavalryCamp');
     expect(r.ok).toBe(false);
+  });
+
+  it('M5-1 兵營分兵種：各兵種帶兵量由對應兵營等級決定', () => {
+    let c = newCity();
+    const base = capacityForTroop(c, 'cavalry');
+    // 升騎兵營 → 騎兵容量增加，槍兵容量不變
+    c = { ...c, levels: { ...c.levels, cavalryCamp: c.levels.cavalryCamp + 2 } };
+    expect(capacityForTroop(c, 'cavalry')).toBeGreaterThan(base);
+    expect(capacityForTroop(c, 'spear')).toBe(base); // 槍營未升
+    // 象兵走槍營、刀盾走盾營、器械走弓營（8 兵種映射 4 營）
+    expect(capacityForTroop(c, 'elephant')).toBe(capacityForTroop(c, 'spear'));
+    expect(capacityForTroop(c, 'sword')).toBe(capacityForTroop(c, 'shield'));
+    expect(capacityForTroop(c, 'apparatus')).toBe(capacityForTroop(c, 'bow'));
   });
 
   it('升級成本隨等級成長', () => {
