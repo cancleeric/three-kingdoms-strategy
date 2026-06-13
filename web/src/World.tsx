@@ -131,7 +131,7 @@ export default function World() {
   const [allyCode, setAllyCode] = useState<string>(''); // M4.5：World 頁同盟加入碼
   // M5-8：座標地圖——選格檢視 + 局部縮放
   const [selected, setSelected] = useState<WTile | null>(null);
-  const [zoom, setZoom] = useState(1);
+  const [zoom, setZoom] = useState(1.3); // M5 預設放大（地圖看得更清楚）
 
   // M4：賽季結算
   const [seasonResult, setSeasonResult] = useState<SeasonSettleResult | null>(null);
@@ -494,9 +494,9 @@ export default function World() {
         )}
       </div>
 
-      <div className="panel" style={{ maxWidth: 900, margin: '12px auto 0', overflow: 'auto' }}>
+      <div className="panel" style={{ maxWidth: 1280, margin: '12px auto 0', overflow: 'auto' }}>
         {layout ? (
-          <svg viewBox={layout.vb} style={{ width: `${100 * zoom}%`, height: 'auto', maxHeight: 560 * zoom }}>
+          <svg viewBox={layout.vb} style={{ width: `${100 * zoom}%`, height: 'auto', maxHeight: 860 * zoom }}>
             {/* M5-10 鋪路：己方連地道路（畫在六角下方）*/}
             {roads.map((s, i) => (
               <line key={`road${i}`} x1={s.x1} y1={s.y1} x2={s.x2} y2={s.y2} stroke="#c9a227" strokeWidth={3} strokeLinecap="round" opacity={0.55} />
