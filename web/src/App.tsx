@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import Pvp from './Pvp';
 import World from './World';
+import Onboarding from './Onboarding';
+import TacticConfig from './TacticConfig';
 import {
   ROSTER, RECRUIT_POOL, GUAN_PING,
   makeUnit, makeSquad, resolveBattle, makeRng,
@@ -9,8 +11,13 @@ import {
   serializeCampaign, deserializeCampaign,
   newRoster, recruit, ownedList, RECRUIT_COST,
   newAccount, endAndAdvance, SEASON_NAME,
+  LORD_DEF, ITEM_NAME, lordStartBonus, stateName, TUTORIAL_QUESTS,
 } from './engine';
-import type { Hero, TroopType, CombatEvent, CampaignHero, TileBattleOutcome, City, BuildingId, Resource, SaveState, Roster, RecruitResult, Account } from './engine';
+import type { Hero, TroopType, CombatEvent, CampaignHero, TileBattleOutcome, City, BuildingId, Resource, SaveState, Roster, RecruitResult, Account, LordProfile } from './engine';
+
+const LORD_KEY = 'sanguo-lord-v1';
+const loadLord = (): LordProfile | null => { try { const s = localStorage.getItem(LORD_KEY); return s ? JSON.parse(s) as LordProfile : null; } catch { return null; } };
+const saveLord = (p: LordProfile) => { try { localStorage.setItem(LORD_KEY, JSON.stringify(p)); } catch { /* ignore */ } };
 
 const SAVE_KEY = 'sanguo-campaign-v1';
 const loadSave = (): SaveState | null => {
@@ -27,7 +34,7 @@ const TROOPS: { v: TroopType; label: string }[] = [
   { v: 'shield', label: '盾兵' }, { v: 'bow', label: '弓兵' }, { v: 'apparatus', label: '器械' },
 ];
 const PHASE_LABEL: Record<CombatEvent['phase'], string> = {
-  command: '指揮', passive: '被動', active: '主動', pursuit: '追擊', attack: '普攻', assault: '突擊', end: '結束',
+  formation: '陣法', command: '指揮', passive: '被動', active: '主動', pursuit: '追擊', attack: '普攻', assault: '突擊', end: '結束',
 };
 const WINNER_LABEL: Record<string, string> = { attacker: '進攻方勝', defender: '防守方勝', draw: '平手' };
 
@@ -134,6 +141,8 @@ function Campaign() {
   const [outcome, setOutcome] = useState<(TileBattleOutcome & { events: CombatEvent[] }) | null>(null);
   const [pulled, setPulled] = useState<RecruitResult | null>(null);
   const [hasSave, setHasSave] = useState(() => !!loadSave());
+  const [lord, setLord] = useState<LordProfile | null>(() => loadLord());
+  const [wizard, setWizard] = useState(false);
 
   // 自動存檔：開戰後，戰役狀態一變動即寫入 localStorage（§13.3 進度持久化）
   useEffect(() => {
@@ -152,11 +161,26 @@ function Campaign() {
     setTileIdx(st.tileIdx); setSeedCtr(st.seedCtr); setOutcome(null); setPulled(null); setStarted(true);
   };
 
-  const start = () => {
+  const start = (lp: LordProfile | null = lord) => {
     clearSave(); setHasSave(false);
     setCh({ hero: heroById(formation[0].id), level: 1, xp: 0 });
-    setCity(newCity()); setRoster(newRoster(GUAN_PING)); setAccount(newAccount(newRoster(GUAN_PING)));
+    let c = newCity();
+    if (lp) c = addResources(c, { silver: lordStartBonus(lp).silver }); // §4.1 主公起始加成
+    setCity(c); setRoster(newRoster(GUAN_PING)); setAccount(newAccount(newRoster(GUAN_PING)));
     setTileIdx(0); setSeedCtr(1); setOutcome(null); setPulled(null); setStarted(true);
+  };
+
+  // 首次出征：未創建主公 → 跑 §4 新手引導精靈；完成後存檔並出征
+  const beginCampaign = () => { if (lord) start(lord); else setWizard(true); };
+  const finishWizard = (p: LordProfile) => { saveLord(p); setLord(p); setWizard(false); start(p); };
+
+  // §4.3 新手任務完成判定（依當前戰役狀態）
+  const questDone: Record<string, boolean> = {
+    capture1: tileIdx >= 1,
+    build4: ['farm', 'lumber', 'quarry', 'ironForge'].every((b) => city.levels[b as BuildingId] >= 1),
+    equipHero: formation.some((f) => f.id === 'guanping'),
+    barracks3: city.levels.barracks >= 3,
+    joinAlliance: false,
   };
 
   // §13 進入下一賽季：結算聲望、英雄/紅度保留、地圖/城建/佈陣重置
@@ -205,11 +229,21 @@ function Campaign() {
   const doBuild = (b: BuildingId) => setCity((c) => upgrade(c, b).city);
 
   if (!started) {
+    if (wizard) return <Onboarding onDone={finishWizard} />;
     return (
       <>
         <div className="panel" style={{ maxWidth: 560, margin: '0 auto' }}>
           <h2>🚩 開始打地戰役</h2>
           <p className="subtitle" style={{ textAlign: 'left' }}>起始主將關平（§4.3 贈送）。出征後在戰役中花銀錢招募更多武將、編入佈陣。核心循環：打地賺資源 → 招募/蓋城 → 變強 → 打更高地 → 攻克洛陽。</p>
+          {lord ? (
+            <div className="row"><label>當前主公</label>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ width: 26, height: 26, background: lord.bannerColor, color: '#fff', borderRadius: 6, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700 }}>{lord.sigil}</span>
+                <b>{LORD_DEF[lord.type].name}</b>（{LORD_DEF[lord.type].perk}）｜ {stateName(lord.birthState)} ｜ 道具 {lord.items.map((it) => ITEM_NAME[it]).join('、')}
+                <button onClick={() => setWizard(true)} style={{ background: '#3a2e1e', border: '1px solid var(--line)', color: 'var(--ink)', borderRadius: 6, padding: '4px 10px', cursor: 'pointer', fontSize: 12 }}>重新創建</button>
+              </span>
+            </div>
+          ) : <p className="subtitle" style={{ textAlign: 'left', color: 'var(--gold)' }}>尚未創建主公，出征將先進行新手引導（§4）。</p>}
           <div className="row"><label>起始兵種</label>
             <select value={formation[0].troop} onChange={(e) => setFormation([{ id: 'guanping', troop: e.target.value as TroopType }])}>
               {TROOPS.map((t) => <option key={t.v} value={t.v}>{t.label}</option>)}
@@ -218,7 +252,7 @@ function Campaign() {
         </div>
         <div className="controls">
           {hasSave && <button className="fight" style={{ background: 'var(--gold)', color: '#1a1410' }} onClick={resume}>繼續上次戰役</button>}
-          <button className="fight" onClick={start}>{hasSave ? '新戰役' : '出 征'}</button>
+          <button className="fight" onClick={beginCampaign}>{hasSave ? '新戰役' : lord ? '出 征' : '創建主公 · 出征'}</button>
         </div>
       </>
     );
@@ -228,7 +262,7 @@ function Campaign() {
     <>
       <div className="grid">
         <div className="panel side-att">
-          <h2>🗡️ 我軍佈陣 ｜ {SEASON_NAME[account.seasonType]} ｜ 聲望 {account.prestige}（{account.rank}階）</h2>
+          <h2>{lord && <span title={`${LORD_DEF[lord.type].name}·${stateName(lord.birthState)}`} style={{ display: 'inline-flex', width: 22, height: 22, background: lord.bannerColor, color: '#fff', borderRadius: 5, alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 13, marginRight: 6, verticalAlign: 'middle' }}>{lord.sigil}</span>}🗡️ 我軍佈陣 ｜ {SEASON_NAME[account.seasonType]} ｜ 聲望 {account.prestige}（{account.rank}階）</h2>
           {formation.map((slot, i) => (
             <div className="row" key={i}><label>{i === 0 ? '主將' : `副將${i}`}</label>
               <select value={slot.id} onChange={(e) => setFormation((f) => f.map((s, j) => j === i ? { ...s, id: e.target.value } : s))}>
@@ -285,6 +319,18 @@ function Campaign() {
         <div style={{ marginTop: 10, color: 'var(--muted)', fontSize: 13 }}>名冊：{ownedList(roster).map((o) => `${nameOf(o.hero.id)}(${'★'.repeat(o.redStars)})`).join('　')}</div>
       </div>
 
+      {/* §4.3 新手任務追蹤 */}
+      <div className="panel" style={{ marginTop: 16 }}>
+        <h2>📜 新手任務（§4.3）｜ {Object.values(questDone).filter(Boolean).length} / {TUTORIAL_QUESTS.length}</h2>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+          {TUTORIAL_QUESTS.map((q) => (
+            <div key={q.id} style={{ fontSize: 13, color: questDone[q.id] ? 'var(--gold)' : 'var(--muted)' }}>
+              {questDone[q.id] ? '✅' : '⬜'} {q.title}　<span style={{ color: '#8a7c5f' }}>獎勵：{q.reward}{q.id === 'joinAlliance' ? '（於連線對戰／天下加入）' : ''}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
       <div className="controls">
         {cleared
           ? <><div className="winner">🎉 攻克洛陽！本賽季結算 +聲望 {tileIdx * 100 + 500}</div>
@@ -306,7 +352,7 @@ function Campaign() {
 }
 
 export default function App() {
-  const [mode, setMode] = useState<'campaign' | 'sandbox' | 'pvp' | 'world'>('campaign');
+  const [mode, setMode] = useState<'campaign' | 'sandbox' | 'pvp' | 'world' | 'tactic'>('campaign');
   return (
     <div className="wrap">
       <h1>三國志戰略 — 戰鬥模擬器</h1>
@@ -316,8 +362,13 @@ export default function App() {
         <button className="fight" style={{ background: mode === 'world' ? 'var(--accent)' : '#444', padding: '8px 20px', fontSize: 14 }} onClick={() => setMode('world')}>天下大地圖</button>
         <button className="fight" style={{ background: mode === 'pvp' ? 'var(--accent)' : '#444', padding: '8px 20px', fontSize: 14 }} onClick={() => setMode('pvp')}>連線對戰</button>
         <button className="fight" style={{ background: mode === 'sandbox' ? 'var(--accent)' : '#444', padding: '8px 20px', fontSize: 14 }} onClick={() => setMode('sandbox')}>對戰沙盒</button>
+        <button className="fight" style={{ background: mode === 'tactic' ? 'var(--accent)' : '#444', padding: '8px 20px', fontSize: 14 }} onClick={() => setMode('tactic')}>戰法配置</button>
       </div>
-      {mode === 'campaign' ? <Campaign /> : mode === 'world' ? <World /> : mode === 'pvp' ? <Pvp /> : <Sandbox />}
+      {mode === 'campaign' ? <Campaign />
+        : mode === 'world' ? <World />
+        : mode === 'pvp' ? <Pvp />
+        : mode === 'tactic' ? <TacticConfig />
+        : <Sandbox />}
     </div>
   );
 }

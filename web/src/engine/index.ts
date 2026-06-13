@@ -10,3 +10,11 @@ export * from './save';
 export * from './gacha';
 
 export * from './season';
+
+export * from './alliance';
+
+export * from './worldmap';
+
+export * from './onboarding';
+
+export * from './tacticbook';
