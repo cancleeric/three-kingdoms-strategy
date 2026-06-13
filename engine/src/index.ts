@@ -22,3 +22,5 @@ export * from './tacticbook';
 export * from './faction';
 
 export * from './rally';
+
+export * from './stamina';

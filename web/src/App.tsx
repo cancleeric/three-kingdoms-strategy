@@ -13,7 +13,9 @@ import {
   newRoster, recruit, ownedList, RECRUIT_COST,
   newAccount, endAndAdvance, SEASON_NAME,
   LORD_DEF, ITEM_NAME, lordStartBonus, stateName, TUTORIAL_QUESTS,
+  newStamina, currentStamina, hasStamina, spend as spendStamina, secondsToFull, STAMINA_MAX, ATTACK_COST,
 } from './engine';
+import type { Stamina } from './engine';
 import type { Hero, TroopType, CombatEvent, CampaignHero, TileBattleOutcome, City, BuildingId, Resource, SaveState, Roster, RecruitResult, Account, LordProfile } from './engine';
 
 const LORD_KEY = 'sanguo-lord-v1';
@@ -142,6 +144,10 @@ function Campaign() {
   const [seedCtr, setSeedCtr] = useState(1);
   const [outcome, setOutcome] = useState<(TileBattleOutcome & { events: CombatEvent[] }) | null>(null);
   const [pulled, setPulled] = useState<RecruitResult | null>(null);
+  // M5-2 體力系統：出兵節流閥（每秒 tick 更新回復顯示）
+  const [stamina, setStamina] = useState<Stamina>(() => newStamina(Date.now()));
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => { const t = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(t); }, []);
   const [hasSave, setHasSave] = useState(() => !!loadSave());
   const [lord, setLord] = useState<LordProfile | null>(() => loadLord());
   const [wizard, setWizard] = useState(false);
@@ -169,6 +175,7 @@ function Campaign() {
     let c = newCity();
     if (lp) c = addResources(c, { silver: lordStartBonus(lp).silver }); // §4.1 主公起始加成
     setCity(c); setRoster(newRoster(GUAN_PING)); setAccount(newAccount(newRoster(GUAN_PING)));
+    setStamina(newStamina(Date.now())); // M5-2 出征滿體力
     setTileIdx(0); setSeedCtr(1); setOutcome(null); setPulled(null); setStarted(true);
   };
 
@@ -215,6 +222,10 @@ function Campaign() {
 
   const attack = () => {
     if (!tile) return;
+    // M5-2：體力不足不能出兵（SLG 節奏節流）
+    const sp = spendStamina(stamina, Date.now(), ATTACK_COST);
+    if (!sp.ok) return;
+    setStamina(sp.stamina);
     const out = attackTile(buildSquad(), tile, seedCtr);
     const full = resolveBattle({ attacker: buildSquad(), defender: makeGarrison(tile), seed: seedCtr });
     setOutcome({ ...out, events: full.events });
@@ -280,6 +291,15 @@ function Campaign() {
           {formation.length < 3 && ownedHeroes.length > formation.length && <div style={{ marginBottom: 8 }}><button onClick={() => setFormation((f) => [...f, { id: ownedHeroes.find((h) => !f.some((s) => s.id === h.id))!.id, troop: 'spear' }])} style={{ background: '#3a2e1e', border: '1px solid var(--line)', color: 'var(--ink)', borderRadius: 8, padding: '6px 14px', cursor: 'pointer', fontSize: 13 }}>＋ 編入副將</button></div>}
           <div className="row"><label>軍隊</label><span>Lv.{ch.level}／50（XP {ch.xp}）｜ {formation.map((f) => `${TROOPS.find((t) => t.v === f.troop)?.label} ${capacityForTroop(city, f.troop)}兵`).join('　')}</span></div>
           <div className="row"><label>進度</label><span>{Math.min(tileIdx, TILES.length)} / {TILES.length} 關</span></div>
+          <div className="row"><label>體力</label>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ display: 'inline-block', width: 120, height: 10, background: '#241c14', borderRadius: 5, overflow: 'hidden', verticalAlign: 'middle' }}>
+                <span style={{ display: 'block', height: '100%', width: `${(currentStamina(stamina, now) / STAMINA_MAX) * 100}%`, background: currentStamina(stamina, now) >= ATTACK_COST ? '#3a8a3a' : '#a05a2a' }} />
+              </span>
+              <b style={{ color: currentStamina(stamina, now) >= ATTACK_COST ? 'var(--ink)' : '#e0a060' }}>{currentStamina(stamina, now)} / {STAMINA_MAX}</b>
+              <span style={{ color: 'var(--muted)', fontSize: 12 }}>（每戰 -{ATTACK_COST}{secondsToFull(stamina, now) > 0 ? `，回滿 ${secondsToFull(stamina, now)} 秒` : '，已滿'}）</span>
+            </span>
+          </div>
         </div>
         <div className="panel side-def">
           <h2>🏯 {cleared ? '全境平定' : tile!.name}</h2>
@@ -338,7 +358,7 @@ function Campaign() {
         {cleared
           ? <><div className="winner">🎉 攻克洛陽！本賽季結算 +聲望 {tileIdx * 100 + 500}</div>
               <button className="fight" style={{ background: 'var(--gold)', color: '#1a1410' }} onClick={nextSeason}>進入下一賽季（保留武將/紅度）</button></>
-          : <button className="fight" onClick={attack}>攻打 {tile!.name}</button>}
+          : <button className="fight" onClick={attack} disabled={!hasStamina(stamina, now, ATTACK_COST)} style={!hasStamina(stamina, now, ATTACK_COST) ? { background: '#444', cursor: 'not-allowed' } : undefined}>{hasStamina(stamina, now, ATTACK_COST) ? `攻打 ${tile!.name}` : `體力不足（回滿 ${secondsToFull(stamina, now)} 秒）`}</button>}
         <button className="fight" style={{ background: '#444' }} onClick={() => { clearSave(); setHasSave(false); setStarted(false); }}>重新佈陣</button>
       </div>
       {outcome && (
