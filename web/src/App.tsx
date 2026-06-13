@@ -9,7 +9,8 @@ import {
   ROSTER, RECRUIT_POOL, GUAN_PING,
   makeUnit, makeSquad, resolveBattle, makeRng,
   TILES, grantXp, leveledHero, attackTile, makeGarrison,
-  newCity, produce, upgrade, addResources, capacityForTroop, upgradeCost, canAfford, BUILDINGS,
+  newCity, produce, addResources, capacityForTroop, upgradeCost, canAfford, BUILDINGS,
+  startUpgrade, collectBuilds, speedupBuild, isBuilding,
   serializeCampaign, deserializeCampaign,
   newRoster, recruit, ownedList, RECRUIT_COST,
   newAccount, endAndAdvance, SEASON_NAME,
@@ -246,7 +247,11 @@ function Campaign() {
     }
   };
 
-  const doBuild = (b: BuildingId) => setCity((c) => upgrade(c, b).city);
+  // M5-5：開工（進施工計時）+ 加速（立即完工）
+  const doBuild = (b: BuildingId) => setCity((c) => startUpgrade(c, b, Date.now()).city);
+  const doSpeedup = (b: BuildingId) => setCity((c) => speedupBuild(c, b));
+  // 每秒結算到時間的施工（collectBuilds 無變化時回同參考，不觸發 re-render）
+  useEffect(() => { setCity((c) => collectBuilds(c, Date.now())); }, [now]);
 
   if (!started) {
     if (wizard) return <Onboarding onDone={finishWizard} />;
@@ -333,13 +338,21 @@ function Campaign() {
             const cost = upgradeCost(b, lv);
             const afford = canAfford(city.resources, cost) && lv < 25;
             const costStr = (Object.keys(cost) as Resource[]).filter((k) => cost[k] > 0).map((k) => `${RES_LABEL[k]}${cost[k]}`).join('/');
+            const building = isBuilding(city, b);
+            const remain = building ? Math.max(0, Math.ceil((city.building![b]! - now) / 1000)) : 0;
             return (
-              <button key={b} onClick={() => doBuild(b)} disabled={!afford}
-                style={{ flex: '1 1 140px', background: afford ? '#3a2e1e' : '#241c14', color: afford ? 'var(--ink)' : '#666', border: '1px solid var(--line)', borderRadius: 8, padding: '8px 10px', cursor: afford ? 'pointer' : 'not-allowed', textAlign: 'left', fontSize: 13 }}>
-                <b>{BUILDINGS[b].name} Lv.{lv}</b><br />
+              <div key={b} style={{ flex: '1 1 140px', background: building ? '#2a3a2e' : afford ? '#3a2e1e' : '#241c14', border: `1px solid ${building ? '#3a8a3a' : 'var(--line)'}`, borderRadius: 8, padding: '8px 10px', textAlign: 'left', fontSize: 13 }}>
+                <b style={{ color: building || afford ? 'var(--ink)' : '#666' }}>{BUILDINGS[b].name} Lv.{lv}{building ? ' 🔨' : ''}</b><br />
                 <span style={{ color: 'var(--muted)' }}>{BUILDINGS[b].desc}</span><br />
-                <span style={{ color: afford ? 'var(--gold)' : '#666' }}>升級：{costStr}</span>
-              </button>
+                {building ? (
+                  <span>
+                    <span style={{ color: '#7ac77a' }}>施工中 剩 {remain} 秒</span>
+                    <button onClick={() => doSpeedup(b)} style={{ marginLeft: 6, padding: '1px 8px', background: '#7a5c12', color: '#fff', border: 'none', borderRadius: 3, cursor: 'pointer', fontSize: 11 }}>加速</button>
+                  </span>
+                ) : (
+                  <button onClick={() => doBuild(b)} disabled={!afford} style={{ padding: '2px 8px', background: afford ? '#3a2e1e' : '#241c14', color: afford ? 'var(--gold)' : '#666', border: '1px solid var(--line)', borderRadius: 4, cursor: afford ? 'pointer' : 'not-allowed', fontSize: 12 }}>升級：{costStr}</button>
+                )}
+              </div>
             );
           })}
         </div>

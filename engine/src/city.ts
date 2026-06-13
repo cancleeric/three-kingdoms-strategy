@@ -49,6 +49,7 @@ export const TROOP_CAMP: Record<TroopType, BuildingId> = {
 export interface City {
   levels: Record<BuildingId, number>; // 各建築等級（0=未建）
   resources: Resources;
+  building?: Partial<Record<BuildingId, number>>; // M5-5 施工中：BuildingId → 完工 timestamp(ms)
 }
 
 export function newCity(): City {
@@ -112,4 +113,41 @@ export function troopCapacity(campLevel: number): number {
 // M5-1：某兵種的帶兵量 = 其對應兵營等級的容量。
 export function capacityForTroop(city: City, troop: TroopType): number {
   return troopCapacity(city.levels[TROOP_CAMP[troop]]);
+}
+
+// ── M5-5 建造倒計時 + 加速（對齊真實《三戰》兵營建造計時）──────────
+// 升級不再即時完成：扣資源後進入施工，到時間自動完工或花費加速。
+// 示範時長：每級 20 秒（真實遊戲為數小時，此處縮短便於觀察施工→加速）。
+export const buildDuration = (nextLevel: number): number => nextLevel * 20_000;
+export const isBuilding = (city: City, b: BuildingId): boolean => city.building?.[b] != null;
+
+/** 開始升級：扣資源、設完工時刻。已在施工或資源不足則 ok:false。 */
+export function startUpgrade(city: City, b: BuildingId, now: number): { ok: boolean; city: City } {
+  const cur = city.levels[b];
+  if (cur >= 25 || isBuilding(city, b)) return { ok: false, city };
+  const cost = upgradeCost(b, cur);
+  if (!canAfford(city.resources, cost)) return { ok: false, city };
+  const res = { ...city.resources };
+  (Object.keys(cost) as Resource[]).forEach((k) => { res[k] -= cost[k]; });
+  return { ok: true, city: { ...city, resources: res, building: { ...city.building, [b]: now + buildDuration(cur + 1) } } };
+}
+
+/** 結算到時間的施工（完工 → 升級、移除計時）。供每秒 tick 呼叫。 */
+export function collectBuilds(city: City, now: number): City {
+  if (!city.building) return city;
+  const levels = { ...city.levels };
+  const building = { ...city.building };
+  let changed = false;
+  for (const [b, completeAt] of Object.entries(building) as [BuildingId, number][]) {
+    if (completeAt <= now) { levels[b] = levels[b] + 1; delete building[b]; changed = true; }
+  }
+  return changed ? { ...city, levels, building } : city;
+}
+
+/** 加速：立即完工某施工中建築（免費，示範用）。 */
+export function speedupBuild(city: City, b: BuildingId): City {
+  if (!isBuilding(city, b)) return city;
+  const building = { ...city.building };
+  delete building[b];
+  return { ...city, levels: { ...city.levels, [b]: city.levels[b] + 1 }, building };
 }

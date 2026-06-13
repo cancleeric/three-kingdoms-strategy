@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { newCity, produce, upgrade, upgradeCost, canAfford, troopCapacity, capacityForTroop, addResources, BUILDINGS } from './city';
+import { newCity, produce, upgrade, upgradeCost, canAfford, troopCapacity, capacityForTroop, addResources, BUILDINGS, startUpgrade, collectBuilds, speedupBuild, isBuilding, buildDuration } from './city';
 
 describe('city — 城建+資源經濟 (§9/§11)', () => {
   it('新城有基礎建築與起始資源', () => {
@@ -56,6 +56,32 @@ describe('city — 城建+資源經濟 (§9/§11)', () => {
     const c1 = upgradeCost('farm', 1);
     const sum = (x: ReturnType<typeof upgradeCost>) => Object.values(x).reduce((a, b) => a + b, 0);
     expect(sum(c5)).toBeGreaterThan(sum(c1));
+  });
+
+  it('M5-5 建造倒計時：開工扣資源進施工，到時間完工升級', () => {
+    const T = 1_000_000;
+    const c = addResources(newCity(), { wood: 999, stone: 999, iron: 999 });
+    const lv = c.levels.farm;
+    const r = startUpgrade(c, 'farm', T);
+    expect(r.ok).toBe(true);
+    expect(isBuilding(r.city, 'farm')).toBe(true);
+    expect(r.city.levels.farm).toBe(lv); // 尚未升級
+    // 未到時間 → 不完工
+    expect(collectBuilds(r.city, T + buildDuration(lv + 1) - 1).levels.farm).toBe(lv);
+    // 到時間 → 完工升級
+    const done = collectBuilds(r.city, T + buildDuration(lv + 1));
+    expect(done.levels.farm).toBe(lv + 1);
+    expect(isBuilding(done, 'farm')).toBe(false);
+  });
+
+  it('M5-5 加速立即完工 + 施工中不可重複開工', () => {
+    const T = 1_000_000;
+    const c = addResources(newCity(), { wood: 999, stone: 999, iron: 999 });
+    const r = startUpgrade(c, 'farm', T);
+    expect(startUpgrade(r.city, 'farm', T).ok).toBe(false); // 施工中
+    const sped = speedupBuild(r.city, 'farm');
+    expect(sped.levels.farm).toBe(c.levels.farm + 1);
+    expect(isBuilding(sped, 'farm')).toBe(false);
   });
 
   it('兵營等級越高帶兵越多 (§7.2)', () => {
