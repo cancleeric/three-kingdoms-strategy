@@ -3,7 +3,7 @@ import { io, type Socket } from 'socket.io-client';
 import type { FactionId } from './engine/types';
 
 // 與 engine/worldmap 對齊的精簡型別（前端只需展示用欄位）
-interface WTile { q: number; r: number; level: number; state: string; owner: string | null; tent: boolean; landmark?: string }
+interface WTile { q: number; r: number; level: number; state: string; owner: string | null; tent: boolean; landmark?: string; isPass?: boolean }
 // M3.5：WorldView 加 factionOf
 interface WorldView { radius: number; tiles: WTile[]; power: Record<string, number>; factionOf?: Record<string, FactionId> }
 
@@ -500,10 +500,10 @@ export default function World() {
                       createRally({ q: t.q, r: t.r });
                     }
                   }}>
-                  <polygon points={hexPoints(x, y, HEX - 1)} fill={fill}
-                    stroke={marchable ? 'var(--gold)' : marching ? '#4a8ad4' : isCapital ? '#e0c050' : '#15110b'}
-                    strokeWidth={marchable ? 2.5 : marching ? 2 : isCapital ? 1.5 : 1} />
-                  <text x={x} y={y - 2} textAnchor="middle" fontSize="9" fill={owned || t.owner ? '#fff' : '#b8a98a'}>{t.landmark ?? STATE_NAME[t.state]?.[0] ?? ''}</text>
+                  <polygon points={hexPoints(x, y, HEX - 1)} fill={t.isPass && t.owner === null ? '#4a2a20' : fill}
+                    stroke={marchable ? 'var(--gold)' : marching ? '#4a8ad4' : t.isPass ? '#d04030' : isCapital ? '#e0c050' : '#15110b'}
+                    strokeWidth={marchable ? 2.5 : marching ? 2 : t.isPass ? 2.5 : isCapital ? 1.5 : 1} />
+                  <text x={x} y={y - 2} textAnchor="middle" fontSize={t.isPass ? '7' : '9'} fill={t.isPass ? '#ff9a7a' : owned || t.owner ? '#fff' : '#b8a98a'}>{t.isPass ? '⚔' + (t.landmark ?? '') : (t.landmark ?? STATE_NAME[t.state]?.[0] ?? '')}</text>
                   <text x={x} y={y + 9} textAnchor="middle" fontSize="8" fill={owned || t.owner ? '#ffe9a8' : '#8a7c5f'}>L{t.level}{t.tent ? '⛺' : ''}{marching ? '→' : ''}</text>
                 </g>
               );

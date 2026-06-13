@@ -36,12 +36,21 @@ export interface WorldTile {
   owner: string | null;   // playerId；null = 中立（守軍佔據）
   tent: boolean;          // §10.2 營帳（加產 + 勢力值）
   landmark?: string;      // 戰略地標名（洛陽等）
+  isPass?: boolean;       // §2 關隘（守備洛陽的隘口 chokepoint）
 }
 export interface WorldMap {
   radius: number;
   tiles: Record<string, WorldTile>; // hexKey → tile
   spawns: Record<string, string>;   // playerId → 家園 hexKey
 }
+
+// §2 戰略關隘：守備洛陽的四大隘口（洛陽外圍 d=2），須攻克方能推進中樞。
+export const PASSES: { q: number; r: number; name: string }[] = [
+  { q: 2, r: -1, name: '虎牢關' },  // 東
+  { q: -2, r: 1, name: '函谷關' },  // 西
+  { q: 1, r: 1, name: '武關' },     // 南
+  { q: -1, r: -1, name: '孟津關' }, // 北
+];
 
 /** 角度 → 州（中心為司隸，其餘依方位扇區分 11 州） */
 function stateOf(c: Axial, radius: number): StateId {
@@ -71,6 +80,8 @@ export function genWorld(radius: number): WorldMap {
       const state = stateOf(coord, radius);
       const tile: WorldTile = { coord, level, state, owner: null, tent: false };
       if (q === 0 && r === 0) { tile.landmark = '洛陽'; tile.level = 8; }
+      const pass = PASSES.find((p) => p.q === q && p.r === r);
+      if (pass) { tile.landmark = pass.name; tile.level = 7; tile.isPass = true; } // §2 關隘 chokepoint
       tiles[hexKey(coord)] = tile;
     }
   }

@@ -89,7 +89,7 @@ function updateFactionCapital(playerId: string, tile: WorldTile) {
 }
 
 function worldView() {
-  const tiles = Object.values(world.tiles).map((t) => ({ q: t.coord.q, r: t.coord.r, level: t.level, state: t.state, owner: t.owner, tent: t.tent, landmark: t.landmark }));
+  const tiles = Object.values(world.tiles).map((t) => ({ q: t.coord.q, r: t.coord.r, level: t.level, state: t.state, owner: t.owner, tent: t.tent, landmark: t.landmark, isPass: t.isPass }));
   const power: Record<string, number> = {};
   for (const pid of Object.keys(world.spawns)) power[pid] = powerScore(world, pid);
   // M3.5：附帶 factionOf 供前端陣營著色

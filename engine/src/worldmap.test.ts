@@ -1,10 +1,22 @@
 import { describe, it, expect } from 'vitest';
 import {
   genWorld, neighbors, hexDist, hexKey, spawnPlayer, canMarch, captureTile,
-  buildTent, powerScore, tileValue, tileYield, canFoundSubCity, tilesOf, STATE_NAME,
+  buildTent, powerScore, tileValue, tileYield, canFoundSubCity, tilesOf, STATE_NAME, PASSES,
 } from './worldmap';
 
 describe('worldmap — 世界地圖 (§10)', () => {
+  it('M5-9 關隘：洛陽外圍 4 隘口、有名、Lv.7 chokepoint', () => {
+    const m = genWorld(5);
+    expect(PASSES).toHaveLength(4);
+    for (const p of PASSES) {
+      const t = m.tiles[hexKey({ q: p.q, r: p.r })];
+      expect(t.isPass).toBe(true);
+      expect(t.landmark).toBe(p.name);
+      expect(t.level).toBe(7);
+      expect(hexDist(t.coord, { q: 0, r: 0 })).toBe(2); // 環繞洛陽
+    }
+  });
+
   it('六角鄰居 6 個、距離對稱', () => {
     expect(neighbors({ q: 0, r: 0 })).toHaveLength(6);
     expect(hexDist({ q: 0, r: 0 }, { q: 2, r: -1 })).toBe(2);
