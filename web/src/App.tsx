@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import Pvp from './Pvp';
 import {
   ROSTER, RECRUIT_POOL, GUAN_PING,
   makeUnit, makeSquad, resolveBattle, makeRng,
@@ -290,16 +291,17 @@ function Campaign() {
 }
 
 export default function App() {
-  const [mode, setMode] = useState<'campaign' | 'sandbox'>('campaign');
+  const [mode, setMode] = useState<'campaign' | 'sandbox' | 'pvp'>('campaign');
   return (
     <div className="wrap">
       <h1>三國志戰略 — 戰鬥模擬器</h1>
       <p className="subtitle">自動戰鬥引擎 v0.1（決定性、兵種相剋、戰法、士氣、8 回合）</p>
       <div className="controls" style={{ marginTop: 0 }}>
         <button className="fight" style={{ background: mode === 'campaign' ? 'var(--accent)' : '#444', padding: '8px 20px', fontSize: 14 }} onClick={() => setMode('campaign')}>打地戰役</button>
+        <button className="fight" style={{ background: mode === 'pvp' ? 'var(--accent)' : '#444', padding: '8px 20px', fontSize: 14 }} onClick={() => setMode('pvp')}>連線對戰</button>
         <button className="fight" style={{ background: mode === 'sandbox' ? 'var(--accent)' : '#444', padding: '8px 20px', fontSize: 14 }} onClick={() => setMode('sandbox')}>對戰沙盒</button>
       </div>
-      {mode === 'campaign' ? <Campaign /> : <Sandbox />}
+      {mode === 'campaign' ? <Campaign /> : mode === 'pvp' ? <Pvp /> : <Sandbox />}
     </div>
   );
 }
