@@ -6,6 +6,13 @@
  *
  * 設計原則（GDD §1）：戰鬥由戰前規劃自動結算、所有公式公開、可重現（吃 seed）。
  * 純函式邏輯，無框架相依，可單元測試。
+ *
+ * M1 更新：
+ *  - allTacticsOf()：用 innate + learnedSlots（非 null）取代舊 tactics[]
+ *  - formation 類戰法在 pre-battle（turn 0）結算全隊係數修正
+ *  - CombatEvent.phase 加入 'formation'
+ *  - computeDamage 接入兵種適性 aptitude 係數（S/A/B/C）
+ *  - 結算順序：formation → command → passive → active+pursuit → attack+assault
  */
 
 import type {
@@ -14,6 +21,7 @@ import type {
   Tactic,
   TroopType,
   DamageKind,
+  Aptitude,
 } from './types';
 
 // ── 決定性亂數（吃 seed，戰鬥可重現）— mulberry32 ──────────────
@@ -45,6 +53,9 @@ export function troopMatchup(attacker: TroopType, defender: TroopType): number {
   return 1.0;
 }
 
+// ── M1：兵種適性係數（S=+10%, A=+5%, B=0%, C=-5%）────────────
+const APTITUDE_MOD: Record<Aptitude, number> = { S: 1.10, A: 1.05, B: 1.0, C: 0.95 };
+
 // ── §8.2 傷害公式 ──────────────────────────────────────────────
 // base = atkStat * coefficient - defCommand * 0.7
 // final = max(1, base * modifier) * rand(0.95,1.05)
@@ -68,6 +79,10 @@ export function computeDamage(ctx: DamageContext): number {
   // 兵種相剋只作用於物理（strategic 無視）
   if (kind === 'physical') {
     modifier *= troopMatchup(attacker.troopType, defender.troopType);
+  }
+  // M1：兵種適性係數（作用於物理）
+  if (kind === 'physical') {
+    modifier *= APTITUDE_MOD[attacker.hero.aptitude[attacker.troopType]];
   }
   // 紅度加成（§8.2，每紅度 +3%，上限 5 紅 = +15%）
   modifier *= 1 + 0.03 * attacker.hero.redStars;
@@ -102,7 +117,7 @@ function pickTarget(enemies: BattleUnit[]): BattleUnit | null {
 // ── 戰鬥事件日誌（供 UI 回放）─────────────────────────────────
 export interface CombatEvent {
   turn: number;
-  phase: 'command' | 'passive' | 'active' | 'pursuit' | 'attack' | 'assault' | 'end';
+  phase: 'formation' | 'command' | 'passive' | 'active' | 'pursuit' | 'attack' | 'assault' | 'end';
   actorId: string;
   targetId?: string;
   tacticId?: string;
@@ -126,17 +141,51 @@ function squadAlive(s: Squad): boolean {
 }
 
 // ── §6.4 回合內結算 ────────────────────────────────────────────
-// passive(turn start) → active(降速排序) → pursuit → normal attack(降速) → assault → passive(turn end)
-// MVP：active=主動戰法、assault=普攻觸發戰法、pursuit=主動後追擊。
+// M1 結算順序：
+//   Pre-battle: formation（陣法，全隊係數修正）
+//   Pre-battle: command（指揮，開戰生效）
+//   Per-turn:
+//     1. passive（回合開始被動）
+//     2. active（主動，降速排序）+ pursuit（追擊，接在主動後）
+//     3. normal attack（普攻）+ assault（突擊，普攻時）
 function unitsBySpeed(squad: Squad): BattleUnit[] {
   return [...squad.units]
     .filter((u) => u.hp > 0)
     .sort((a, b) => b.hero.stats.speed - a.hero.stats.speed);
 }
 
+// M1：取得武將所有有效戰法（innate + learnedSlots 非 null 者）
+function allTacticsOf(u: BattleUnit): Tactic[] {
+  const slots = u.hero.learnedSlots.filter((t): t is Tactic => t !== null);
+  return [u.hero.innate, ...slots];
+}
+
 function tacticsOf(u: BattleUnit, type: Tactic['type']): Tactic[] {
-  const all = [u.hero.innate, ...u.hero.tactics];
-  return all.filter((t) => t.type === type);
+  return allTacticsOf(u).filter((t) => t.type === type);
+}
+
+// ── M1：陣法係數修正（formation 類戰法全隊 buff）─────────────
+// 每個 formation 戰法的 effects[].value（百分比）加到隊伍係數修正
+// 此修正以 squadFormationMod 記錄，在 pre-battle 結算後傳入 computeDamage 的 modifier
+// （MVP 實作：formation buff 直接影響武將 stats 的加成係數，以 note 記錄事件）
+export interface FormationMod {
+  buffPct: number; // 加法百分比加成（如 10 = +10%）
+}
+
+export function resolveFormation(
+  side: Squad,
+  events: CombatEvent[],
+): FormationMod {
+  let buffPct = 0;
+  for (const u of side.units) {
+    for (const t of tacticsOf(u, 'formation')) {
+      for (const eff of (t.effects ?? [])) {
+        if (eff.kind === 'buff') buffPct += eff.value;
+      }
+      events.push({ turn: 0, phase: 'formation', actorId: u.hero.id, tacticId: t.id, note: `陣法加成 +${buffPct}%` });
+    }
+  }
+  return { buffPct };
 }
 
 // ── 主結算 ─────────────────────────────────────────────────────
@@ -162,11 +211,27 @@ export function resolveBattle(cfg: BattleConfig): BattleResult {
     side.morale = Math.max(0, side.morale - moraleLossFromCasualties(casualties, maxHp));
   }
 
+  // M1 Pre-battle: §陣法類 formation（turn 0，先於 command）
+  const attFormation = resolveFormation(attacker, events);
+  const defFormation = resolveFormation(defender, events);
+
   // §6.1 指揮戰法：開戰生效（MVP 記錄事件，係數已內含於主動）
   for (const u of [...attacker.units, ...defender.units]) {
     for (const t of tacticsOf(u, 'command')) {
       events.push({ turn: 0, phase: 'command', actorId: u.hero.id, tacticId: t.id });
     }
+  }
+
+  // 陣法加成以 formationBonus 注入 computeDamage 的 modifier
+  const formationBonus = (u: BattleUnit): number =>
+    u.side === 'attacker'
+      ? 1 + attFormation.buffPct / 100
+      : 1 + defFormation.buffPct / 100;
+
+  // 包裝 computeDamage，套入陣法加成
+  function dmgWith(ctx: DamageContext): number {
+    const raw = computeDamage(ctx);
+    return raw * formationBonus(ctx.attacker);
   }
 
   let turn = 0;
@@ -179,7 +244,7 @@ export function resolveBattle(cfg: BattleConfig): BattleResult {
         if (rng() < t.triggerRate && t.coefficient > 0) {
           const tgt = pickTarget(enemyOf(u).units);
           if (tgt) {
-            const dmg = computeDamage({ attacker: u, defender: tgt, coefficient: t.coefficient, kind: t.damageKind, attackerMorale: moraleOf(u), rng });
+            const dmg = dmgWith({ attacker: u, defender: tgt, coefficient: t.coefficient, kind: t.damageKind, attackerMorale: moraleOf(u), rng });
             const cas = applyDamage(tgt, dmg);
             hitMorale(enemyOf(u), cas, tgt.maxHp);
             events.push({ turn, phase: 'passive', actorId: u.hero.id, targetId: tgt.hero.id, tacticId: t.id, damage: Math.round(dmg) });
@@ -198,7 +263,7 @@ export function resolveBattle(cfg: BattleConfig): BattleResult {
         if (rng() < t.triggerRate) {
           const tgt = pickTarget(enemyOf(u).units);
           if (tgt) {
-            const dmg = computeDamage({ attacker: u, defender: tgt, coefficient: t.coefficient, kind: t.damageKind, attackerMorale: moraleOf(u), rng });
+            const dmg = dmgWith({ attacker: u, defender: tgt, coefficient: t.coefficient, kind: t.damageKind, attackerMorale: moraleOf(u), rng });
             const cas = applyDamage(tgt, dmg);
             hitMorale(enemyOf(u), cas, tgt.maxHp);
             events.push({ turn, phase: 'active', actorId: u.hero.id, targetId: tgt.hero.id, tacticId: t.id, damage: Math.round(dmg) });
@@ -209,7 +274,7 @@ export function resolveBattle(cfg: BattleConfig): BattleResult {
                 if (ally.hp > 0 && rng() < p.triggerRate) {
                   const pt = pickTarget(enemyOf(u).units);
                   if (pt) {
-                    const pdmg = computeDamage({ attacker: ally, defender: pt, coefficient: p.coefficient, kind: p.damageKind, attackerMorale: moraleOf(ally), rng });
+                    const pdmg = dmgWith({ attacker: ally, defender: pt, coefficient: p.coefficient, kind: p.damageKind, attackerMorale: moraleOf(ally), rng });
                     const pcas = applyDamage(pt, pdmg);
                     hitMorale(enemyOf(u), pcas, pt.maxHp);
                     events.push({ turn, phase: 'pursuit', actorId: ally.hero.id, targetId: pt.hero.id, tacticId: p.id, damage: Math.round(pdmg) });
@@ -227,7 +292,7 @@ export function resolveBattle(cfg: BattleConfig): BattleResult {
       if (u.hp <= 0) continue;
       const tgt = pickTarget(enemyOf(u).units);
       if (!tgt) continue;
-      const atkDmg = computeDamage({ attacker: u, defender: tgt, coefficient: 1.0, kind: 'physical', attackerMorale: moraleOf(u), rng });
+      const atkDmg = dmgWith({ attacker: u, defender: tgt, coefficient: 1.0, kind: 'physical', attackerMorale: moraleOf(u), rng });
       const cas = applyDamage(tgt, atkDmg);
       hitMorale(enemyOf(u), cas, tgt.maxHp);
       events.push({ turn, phase: 'attack', actorId: u.hero.id, targetId: tgt.hero.id, damage: Math.round(atkDmg) });
@@ -236,7 +301,7 @@ export function resolveBattle(cfg: BattleConfig): BattleResult {
         if (rng() < t.triggerRate) {
           const at = pickTarget(enemyOf(u).units);
           if (at) {
-            const adng = computeDamage({ attacker: u, defender: at, coefficient: t.coefficient, kind: t.damageKind, attackerMorale: moraleOf(u), rng });
+            const adng = dmgWith({ attacker: u, defender: at, coefficient: t.coefficient, kind: t.damageKind, attackerMorale: moraleOf(u), rng });
             const acas = applyDamage(at, adng);
             hitMorale(enemyOf(u), acas, at.maxHp);
             events.push({ turn, phase: 'assault', actorId: u.hero.id, targetId: at.hero.id, tacticId: t.id, damage: Math.round(adng) });

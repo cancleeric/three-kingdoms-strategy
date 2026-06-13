@@ -14,3 +14,7 @@ export * from './season';
 export * from './alliance';
 
 export * from './worldmap';
+
+export * from './onboarding';
+
+export * from './tacticbook';

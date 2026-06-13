@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { resolveBattle, troopMatchup, computeDamage, makeRng } from './combat';
-import { ZHAO_YUN, LU_XUN, GUAN_PING, LU_BU, ZHUGE_LIANG, ROSTER, makeUnit, makeSquad } from './sampleData';
+import { ZHAO_YUN, LU_XUN, GUAN_PING, LU_BU, ZHUGE_LIANG, ROSTER, makeUnit, makeSquad, tacticFormation } from './sampleData';
+import type { Hero, Tactic } from './types';
 
 describe('troopMatchup (§7.3 兵種相剋)', () => {
   it('騎克弓 +15%', () => expect(troopMatchup('cavalry', 'bow')).toBeCloseTo(1.15));
@@ -101,3 +102,57 @@ describe('resolveBattle (§8 戰鬥結算)', () => {
     expect(new Set(ROSTER.map((h) => h.id)).size).toBe(6);
   });
 });
+
+describe('M1：戰法 Deck 新特性', () => {
+  it('陣法戰法在 pre-battle（turn 0）生效，事件日誌出現 phase:formation', () => {
+    // 趙雲裝備陣法類戰法
+    const heroWithFormation: Hero = {
+      ...ZHAO_YUN,
+      learnedSlots: [tacticFormation, null],
+    };
+    const att = makeSquad([makeUnit(heroWithFormation, 'cavalry', 3000, 'attacker')]);
+    const def = makeSquad([makeUnit(GUAN_PING, 'spear', 2000, 'defender')]);
+    const r = resolveBattle({ attacker: att, defender: def, seed: 99 });
+    const formationEvents = r.events.filter((e) => e.phase === 'formation');
+    expect(formationEvents.length).toBeGreaterThan(0);
+    expect(formationEvents[0].turn).toBe(0);
+  });
+
+  it('兵種適性 S 武將物理傷害高於 C 武將（同兵種、同 seed）', () => {
+    // 趙雲騎兵適性 S，GUAN_PING 騎兵適性 C
+    // 用騎兵兵種攻擊同一目標，S 應大於 C
+    const heroS: Hero = { ...ZHAO_YUN }; // cavalry: S
+    const heroC: Hero = { ...GUAN_PING, stats: { ...ZHAO_YUN.stats } }; // 同屬性，但 cavalry: C（apt 只含 spear:S）
+
+    const unitS = makeUnit(heroS, 'cavalry', 1000, 'attacker');
+    const unitC = makeUnit(heroC, 'cavalry', 1000, 'attacker');
+    const target = makeUnit(LU_XUN, 'bow', 1000, 'defender');
+
+    const rng = makeRng(42);
+    const dmgS = computeDamage({ attacker: unitS, defender: target, coefficient: 1.5, kind: 'physical', attackerMorale: 100, rng });
+    const rng2 = makeRng(42);
+    const dmgC = computeDamage({ attacker: unitC, defender: target, coefficient: 1.5, kind: 'physical', attackerMorale: 100, rng: rng2 });
+    expect(dmgS).toBeGreaterThan(dmgC);
+  });
+
+  it('learnedSlots 中 null 的槽位不觸發任何戰法', () => {
+    // 諸葛亮兩槽都是 null
+    const heroNullSlots: Hero = { ...ZHUGE_LIANG, learnedSlots: [null, null] };
+    const att = makeSquad([makeUnit(heroNullSlots, 'apparatus', 2000, 'attacker')]);
+    const def = makeSquad([makeUnit(GUAN_PING, 'spear', 2000, 'defender')]);
+    const r = resolveBattle({ attacker: att, defender: def, seed: 7 });
+    // 只有 innate（八陣 strategic）可能觸發，不應有 learnedSlots 的戰法事件
+    // 確認沒有 undefined tacticId 的 active/passive/assault/pursuit（null 槽不產生事件）
+    const learnedEvents = r.events.filter(
+      (e) => ['active', 'passive', 'assault', 'pursuit'].includes(e.phase)
+           && e.actorId === heroNullSlots.id
+    );
+    // 若有事件，其 tacticId 必須是 innate 的 id（非 null 槽產生）
+    for (const ev of learnedEvents) {
+      expect(ev.tacticId).toBe(heroNullSlots.innate.id);
+    }
+    // 戰鬥照常完成
+    expect(r.turns).toBeGreaterThan(0);
+  });
+});
+
