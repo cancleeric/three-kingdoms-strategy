@@ -30,3 +30,5 @@ export * from './advisor';
 export * from './advancement';
 
 export * from './manual';
+
+export * from './reforge';

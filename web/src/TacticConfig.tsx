@@ -13,7 +13,8 @@ import { useEffect, useState } from 'react';
 import { loadTacticConfig, saveTacticConfig } from './tacticStore';
 import { loadAdvancement, setAdvanceLevel, loadAwakened, setAwakened } from './advancementStore';
 import { loadManuals, setManual } from './manualStore';
-import { advanceCost, advancementBonus, ADVANCE_MAX, canAwaken, AWAKEN_BONUS, WAR_MANUALS } from './engine';
+import { loadReforge, setReforge } from './reforgeStore';
+import { advanceCost, advancementBonus, ADVANCE_MAX, canAwaken, AWAKEN_BONUS, WAR_MANUALS, REFORGE_NAME, type ReforgeDir } from './engine';
 import type { Hero, Tactic, TacticLibrary, TacticType } from './engine/types';
 import {
   ROSTER, RECRUIT_POOL,
@@ -97,6 +98,8 @@ function HeroTacticCard({
   onAwaken,
   manualId,
   onSetManual,
+  reforgeDir,
+  onSetReforge,
   onLearnSlot,
   onUpgrade,
   onClearSlot,
@@ -109,6 +112,8 @@ function HeroTacticCard({
   onAwaken: () => void;
   manualId: string;
   onSetManual: (id: string) => void;
+  reforgeDir: string;
+  onSetReforge: (dir: string) => void;
   onLearnSlot: (slotIdx: 0 | 1) => void;
   onUpgrade: (tacticId: string) => void;
   onClearSlot: (slotIdx: 0 | 1) => void;
@@ -151,6 +156,16 @@ function HeroTacticCard({
           {WAR_MANUALS.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
         </select>
         {manualId ? <span style={{ color: 'var(--gold)', fontSize: 13 }}>{WAR_MANUALS.find((m) => m.id === manualId)?.desc}</span> : <span style={{ color: '#8a7a5a', fontSize: 13 }}>裝備兵書強化單一屬性</span>}
+      </div>
+
+      {/* M5-11 重塑 */}
+      <div style={{ ...style.row, marginBottom: 10, gap: 10 }}>
+        <span style={{ fontSize: 13, color: '#8a7a5a' }}>重塑</span>
+        <select value={reforgeDir} onChange={(e) => onSetReforge(e.target.value)}>
+          <option value="">未重塑</option>
+          {(['attack', 'defense', 'speed'] as ReforgeDir[]).map((d) => <option key={d} value={d}>{REFORGE_NAME[d]}</option>)}
+        </select>
+        {reforgeDir ? <span style={{ color: 'var(--gold)', fontSize: 13 }}>{REFORGE_NAME[reforgeDir as ReforgeDir]} +12%</span> : <span style={{ color: '#8a7a5a', fontSize: 13 }}>重塑方向強化屬性群</span>}
       </div>
 
       {/* 自帶戰法 */}
@@ -346,6 +361,8 @@ export default function TacticConfig() {
   const [manuals, setManuals] = useState<Record<string, string>>(() => loadManuals());
   // M5-7 覺醒（heroId → true）
   const [awakenedMap, setAwakenedMap] = useState<Record<string, boolean>>(() => loadAwakened());
+  // M5-11 重塑（heroId → dir）
+  const [reforgeMap, setReforgeMap] = useState<Record<string, string>>(() => loadReforge());
 
   // M1.5：配置任一變動即持久化，讓打地戰役/沙盒/PvP 實戰吃到
   useEffect(() => {
@@ -370,6 +387,12 @@ export default function TacticConfig() {
   const handleSetManual = (id: string) => {
     setManual(hero.id, id);
     setManuals((m) => { const n = { ...m }; if (id) n[hero.id] = id; else delete n[hero.id]; return n; });
+  };
+
+  // M5-11：重塑方向
+  const handleSetReforge = (dir: string) => {
+    setReforge(hero.id, dir as ReforgeDir | '');
+    setReforgeMap((m) => { const n = { ...m }; if (dir) n[hero.id] = dir; else delete n[hero.id]; return n; });
   };
 
   // M5-7：覺醒（一次性）
@@ -485,6 +508,8 @@ export default function TacticConfig() {
             onAwaken={handleAwaken}
             manualId={manuals[hero.id] ?? ''}
             onSetManual={handleSetManual}
+            reforgeDir={reforgeMap[hero.id] ?? ''}
+            onSetReforge={handleSetReforge}
             onLearnSlot={handleLearnSlot}
             onUpgrade={handleUpgrade}
             onClearSlot={handleClearSlot}
