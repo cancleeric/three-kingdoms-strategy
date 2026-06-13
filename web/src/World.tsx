@@ -336,6 +336,22 @@ export default function World() {
     return { placed, vb: `${minX - pad} ${minY - pad} ${maxX - minX + pad * 2} ${maxY - minY + pad * 2}` };
   }, [view]);
 
+  // M5-10 鋪路：己方相鄰地塊間連線（連地視覺，對齊真實《三戰》道路）
+  const roads = useMemo(() => {
+    if (!layout || !me) return [] as { x1: number; y1: number; x2: number; y2: number }[];
+    const pos = new Map(layout.placed.map((p) => [hexKey(p.t.q, p.t.r), p]));
+    const segs: { x1: number; y1: number; x2: number; y2: number }[] = [];
+    for (const p of layout.placed) {
+      if (p.t.owner !== me) continue;
+      for (const [dq, dr] of DIRS) {
+        const nKey = hexKey(p.t.q + dq, p.t.r + dr);
+        const n = pos.get(nKey);
+        if (n && n.t.owner === me && hexKey(p.t.q, p.t.r) < nKey) segs.push({ x1: p.x, y1: p.y, x2: n.x, y2: n.y });
+      }
+    }
+    return segs;
+  }, [layout, me]);
+
   const myPower = me && view ? (view.power[me] ?? 0) : 0;
   const myTiles = view ? view.tiles.filter((t) => t.owner === me).length : 0;
   const ranking = view ? Object.entries(view.power).sort((a, b) => b[1] - a[1]) : [];
@@ -481,6 +497,10 @@ export default function World() {
       <div className="panel" style={{ maxWidth: 900, margin: '12px auto 0', overflow: 'auto' }}>
         {layout ? (
           <svg viewBox={layout.vb} style={{ width: `${100 * zoom}%`, height: 'auto', maxHeight: 560 * zoom }}>
+            {/* M5-10 鋪路：己方連地道路（畫在六角下方）*/}
+            {roads.map((s, i) => (
+              <line key={`road${i}`} x1={s.x1} y1={s.y1} x2={s.x2} y2={s.y2} stroke="#c9a227" strokeWidth={3} strokeLinecap="round" opacity={0.55} />
+            ))}
             {layout.placed.map(({ t, x, y }) => {
               const owned = t.owner === me;
               const marching = isMarching(t);
