@@ -3,10 +3,11 @@
  * 兩名玩家各提交佈陣 → 伺服器用 resolveBattle 決定性結算 → 回傳結果+戰報。
  * 純函式，可單元測試。MMO 多人層的第一塊。
  */
-import {
-  ROSTER, RECRUIT_POOL, makeUnit, makeSquad, resolveBattle, leveledHero,
-} from '../../engine/src/index';
-import type { TroopType, BattleResult } from '../../engine/src/index';
+import { ROSTER, RECRUIT_POOL, makeUnit, makeSquad } from '../../engine/src/sampleData';
+import { resolveBattle } from '../../engine/src/combat';
+import { leveledHero } from '../../engine/src/campaign';
+import type { TroopType } from '../../engine/src/types';
+import type { BattleResult } from '../../engine/src/combat';
 
 export interface PvpFormationSlot { heroId: string; troop: TroopType }
 export interface PvpSubmission {
