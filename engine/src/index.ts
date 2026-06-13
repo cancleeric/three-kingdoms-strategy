@@ -24,3 +24,5 @@ export * from './faction';
 export * from './rally';
 
 export * from './stamina';
+
+export * from './advisor';

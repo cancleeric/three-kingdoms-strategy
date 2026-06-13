@@ -14,6 +14,7 @@ import {
   newAccount, endAndAdvance, SEASON_NAME,
   LORD_DEF, ITEM_NAME, lordStartBonus, stateName, TUTORIAL_QUESTS,
   newStamina, currentStamina, hasStamina, spend as spendStamina, secondsToFull, STAMINA_MAX, ATTACK_COST,
+  applyAdvisor, advisorBonus,
 } from './engine';
 import type { Stamina } from './engine';
 import type { Hero, TroopType, CombatEvent, CampaignHero, TileBattleOutcome, City, BuildingId, Resource, SaveState, Roster, RecruitResult, Account, LordProfile } from './engine';
@@ -146,6 +147,7 @@ function Campaign() {
   const [pulled, setPulled] = useState<RecruitResult | null>(null);
   // M5-2 體力系統：出兵節流閥（每秒 tick 更新回復顯示）
   const [stamina, setStamina] = useState<Stamina>(() => newStamina(Date.now()));
+  const [advisorId, setAdvisorId] = useState<string>(''); // M5-3 軍師（formation 中某將 id，空=無）
   const [now, setNow] = useState(Date.now());
   useEffect(() => { const t = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(t); }, []);
   const [hasSave, setHasSave] = useState(() => !!loadSave());
@@ -218,7 +220,9 @@ function Campaign() {
   // M5-1：每將帶兵量由其兵種對應的兵營等級決定（騎走騎兵營、槍走槍兵營…）
   // 多將佈陣：每名武將依軍隊等級成長，各帶該兵種容量兵（§7.1）
   // M1.5：套用戰法配置頁的 deck，讓打地實戰吃到玩家配置的戰法
-  const buildSquad = () => makeSquad(formation.map((f) => makeUnit(leveledHero({ hero: applyConfiguredTactics(heroById(f.id)), level: ch.level, xp: ch.xp }), f.troop, capacityForTroop(city, f.troop), 'attacker')));
+  // M5-3：軍師（formation 中指定一將）以其智力給全隊增益
+  const advisorHero = advisorId && formation.some((f) => f.id === advisorId) ? leveledHero({ hero: heroById(advisorId), level: ch.level, xp: ch.xp }) : null;
+  const buildSquad = () => applyAdvisor(makeSquad(formation.map((f) => makeUnit(leveledHero({ hero: applyConfiguredTactics(heroById(f.id)), level: ch.level, xp: ch.xp }), f.troop, capacityForTroop(city, f.troop), 'attacker'))), advisorHero);
 
   const attack = () => {
     if (!tile) return;
@@ -289,6 +293,13 @@ function Campaign() {
             </div>
           ))}
           {formation.length < 3 && ownedHeroes.length > formation.length && <div style={{ marginBottom: 8 }}><button onClick={() => setFormation((f) => [...f, { id: ownedHeroes.find((h) => !f.some((s) => s.id === h.id))!.id, troop: 'spear' }])} style={{ background: '#3a2e1e', border: '1px solid var(--line)', color: 'var(--ink)', borderRadius: 8, padding: '6px 14px', cursor: 'pointer', fontSize: 13 }}>＋ 編入副將</button></div>}
+          <div className="row"><label>軍師</label>
+            <select value={advisorId} onChange={(e) => setAdvisorId(e.target.value)}>
+              <option value="">無軍師</option>
+              {formation.map((f) => <option key={f.id} value={f.id}>{nameOf(f.id)}</option>)}
+            </select>
+            {advisorHero ? <span style={{ color: 'var(--gold)', fontSize: 13 }}>運籌帷幄：全隊武力/智力 +{Math.round(advisorBonus(advisorHero) * 100)}%</span> : <span style={{ color: 'var(--muted)', fontSize: 13 }}>指定高智力武將為軍師可全隊加成</span>}
+          </div>
           <div className="row"><label>軍隊</label><span>Lv.{ch.level}／50（XP {ch.xp}）｜ {formation.map((f) => `${TROOPS.find((t) => t.v === f.troop)?.label} ${capacityForTroop(city, f.troop)}兵`).join('　')}</span></div>
           <div className="row"><label>進度</label><span>{Math.min(tileIdx, TILES.length)} / {TILES.length} 關</span></div>
           <div className="row"><label>體力</label>
