@@ -1,0 +1,15 @@
+{
+  "name": "@hd/sanguo-server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "src/index.ts",
+  "scripts": {
+    "start": "tsx src/index.ts",
+    "test": "tsx src/pvp.test.ts"
+  },
+  "dependencies": {
+    "socket.io": "^4.8.0",
+    "tsx": "^4.19.0"
+  }
+}
