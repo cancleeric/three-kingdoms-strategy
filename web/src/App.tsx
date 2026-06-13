@@ -3,6 +3,7 @@ import Pvp from './Pvp';
 import World from './World';
 import Onboarding from './Onboarding';
 import TacticConfig from './TacticConfig';
+import { applyConfiguredTactics } from './tacticStore';
 import {
   ROSTER, RECRUIT_POOL, GUAN_PING,
   makeUnit, makeSquad, resolveBattle, makeRng,
@@ -92,8 +93,9 @@ function Sandbox() {
   const [result, setResult] = useState<ReturnType<typeof resolveBattle> | null>(null);
 
   const fight = () => {
-    const a = HEROES.find((h) => h.id === attHero)!;
-    const d = HEROES.find((h) => h.id === defHero)!;
+    // M1.5：套用玩家在戰法配置頁設定的 deck（含 formation/兵種類戰法）
+    const a = applyConfiguredTactics(HEROES.find((h) => h.id === attHero)!);
+    const d = applyConfiguredTactics(HEROES.find((h) => h.id === defHero)!);
     setResult(resolveBattle({
       attacker: makeSquad([makeUnit(a, attTroop, troops, 'attacker')]),
       defender: makeSquad([makeUnit(d, defTroop, troops, 'defender')]),
@@ -208,7 +210,8 @@ function Campaign() {
   const tile = cleared ? null : TILES[tileIdx];
   const playerTroops = troopCapacity(city.levels.barracks); // §7.2 帶兵量由兵營等級決定
   // 多將佈陣：每名武將依軍隊等級成長，各帶 playerTroops 兵（§7.1）
-  const buildSquad = () => makeSquad(formation.map((f) => makeUnit(leveledHero({ hero: heroById(f.id), level: ch.level, xp: ch.xp }), f.troop, playerTroops, 'attacker')));
+  // M1.5：套用戰法配置頁的 deck，讓打地實戰吃到玩家配置的戰法
+  const buildSquad = () => makeSquad(formation.map((f) => makeUnit(leveledHero({ hero: applyConfiguredTactics(heroById(f.id)), level: ch.level, xp: ch.xp }), f.troop, playerTroops, 'attacker')));
 
   const attack = () => {
     if (!tile) return;

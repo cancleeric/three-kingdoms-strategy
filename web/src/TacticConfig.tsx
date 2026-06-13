@@ -9,7 +9,8 @@
  *  - 拆解武將入口（確認後呼叫 disassembleHero）
  */
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { loadTacticConfig, saveTacticConfig } from './tacticStore';
 import type { Hero, Tactic, TacticLibrary, TacticType } from './engine/types';
 import {
   ROSTER, RECRUIT_POOL,
@@ -286,12 +287,24 @@ function DisassemblePanel({
 // ── 主元件 ──────────────────────────────────────────────────
 export default function TacticConfig() {
   const [selectedHeroId, setSelectedHeroId] = useState<string>(ROSTER[0].id);
-  const [heroStates, setHeroStates] = useState<Record<string, Hero>>(
-    Object.fromEntries(ROSTER.map((h) => [h.id, h])),
-  );
-  const [lib, setLib] = useState<TacticLibrary>(INITIAL_LIBRARY);
+  // M1.5：從 localStorage 還原已配置的可學槽 + 書庫（無則用預設）
+  const [heroStates, setHeroStates] = useState<Record<string, Hero>>(() => {
+    const cfg = loadTacticConfig();
+    return Object.fromEntries(ROSTER.map((h) => {
+      const slots = cfg?.slots[h.id];
+      return [h.id, slots ? { ...h, learnedSlots: [slots[0] ?? null, slots[1] ?? null] as [Tactic | null, Tactic | null] } : h];
+    }));
+  });
+  const [lib, setLib] = useState<TacticLibrary>(() => loadTacticConfig()?.library ?? INITIAL_LIBRARY);
   const [activeSlot, setActiveSlot] = useState<0 | 1 | null>(null);
   const [message, setMessage] = useState<string>('');
+
+  // M1.5：配置任一變動即持久化，讓打地戰役/沙盒/PvP 實戰吃到
+  useEffect(() => {
+    const slots: Record<string, (Tactic | null)[]> = {};
+    for (const [id, h] of Object.entries(heroStates)) slots[id] = h.learnedSlots;
+    saveTacticConfig({ slots, library: lib });
+  }, [heroStates, lib]);
 
   const hero = heroStates[selectedHeroId] ?? ROSTER[0];
 
