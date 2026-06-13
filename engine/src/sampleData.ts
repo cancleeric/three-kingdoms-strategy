@@ -59,8 +59,23 @@ export const ZHOU_YU: Hero = {
   aptitude: apt('bow', { apparatus: 'A' }), innate: zhouyuInnate, tactics: [],
 };
 
-/** 可選武將名冊（沙盒/佈陣用）*/
+/** 可選武將名冊（沙盒/佈陣用，4★以上）*/
 export const ROSTER: Hero[] = [ZHAO_YUN, LU_BU, ZHUGE_LIANG, LU_XUN, ZHOU_YU, GUAN_PING];
+
+// ── 招募池雜兵（§5.1 Star3 綠卡，招募/紅度養成用）──────────────
+function fodder(id: string, name: string, force: number, troop: TroopType): Hero {
+  return {
+    id, name, rarity: 3, redStars: 0,
+    stats: { force, intellect: force * 0.7, command: force * 0.85, speed: 90 + force * 0.2, politics: 60, charm: 60 },
+    aptitude: apt(troop), innate: tactic({ id: `${id}_innate`, name: '奮戰', type: 'innate', triggerRate: 0.25, coefficient: 1.15 }), tactics: [],
+  };
+}
+export const HUANG_GAI = fodder('huanggai', '黃蓋', 130, 'cavalry');
+export const LI_DIAN = fodder('lidian', '李典', 120, 'bow');
+export const ZHOU_CANG = fodder('zhoucang', '周倉', 135, 'shield');
+
+/** 招募池（含 3★~6★，依稀有度權重抽取）*/
+export const RECRUIT_POOL: Hero[] = [...ROSTER, HUANG_GAI, LI_DIAN, ZHOU_CANG];
 
 export function makeUnit(hero: Hero, troopType: TroopType, troops: number, side: BattleUnit['side']): BattleUnit {
   return { hero, troopType, troops, hp: troops, maxHp: troops, side };

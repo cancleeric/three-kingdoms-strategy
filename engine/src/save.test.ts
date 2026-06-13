@@ -1,16 +1,23 @@
 import { describe, it, expect } from 'vitest';
 import { serializeCampaign, deserializeCampaign, SAVE_VERSION } from './save';
 import type { CampaignState } from './save';
-import { ROSTER } from './sampleData';
+import { ROSTER, RECRUIT_POOL, ZHAO_YUN, LU_BU } from './sampleData';
 import { newCity } from './city';
+import { newRoster, addHero } from './gacha';
 
-const sample = (): CampaignState => ({
-  formation: [{ id: 'zhaoyun', troop: 'cavalry' }, { id: 'lubu', troop: 'spear' }],
-  commander: { hero: ROSTER[0], level: 12, xp: 30 },
-  city: newCity(),
-  tileIdx: 3,
-  seedCtr: 7,
-});
+const sample = (): CampaignState => {
+  let roster = newRoster(ZHAO_YUN);
+  roster = addHero(roster, LU_BU).roster;
+  roster = addHero(roster, ZHAO_YUN).roster; // 紅度 2
+  return {
+    formation: [{ id: 'zhaoyun', troop: 'cavalry' }, { id: 'lubu', troop: 'spear' }],
+    commander: { hero: ROSTER[0], level: 12, xp: 30 },
+    city: newCity(),
+    roster,
+    tileIdx: 3,
+    seedCtr: 7,
+  };
+};
 
 describe('save — 存檔序列化 (§13.3)', () => {
   it('序列化存武將 id 不存完整物件', () => {

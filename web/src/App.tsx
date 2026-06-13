@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
-  ROSTER,
-  makeUnit, makeSquad, resolveBattle,
+  ROSTER, RECRUIT_POOL, GUAN_PING,
+  makeUnit, makeSquad, resolveBattle, makeRng,
   TILES, grantXp, leveledHero, attackTile, makeGarrison,
   newCity, produce, upgrade, addResources, troopCapacity, upgradeCost, canAfford, BUILDINGS,
   serializeCampaign, deserializeCampaign,
+  newRoster, recruit, ownedList, RECRUIT_COST,
 } from './engine';
-import type { Hero, TroopType, CombatEvent, CampaignHero, TileBattleOutcome, City, BuildingId, Resource, SaveState } from './engine';
+import type { Hero, TroopType, CombatEvent, CampaignHero, TileBattleOutcome, City, BuildingId, Resource, SaveState, Roster, RecruitResult } from './engine';
 
 const SAVE_KEY = 'sanguo-campaign-v1';
 const loadSave = (): SaveState | null => {
@@ -119,35 +120,50 @@ const RES_LABEL: Record<Resource, string> = { food: '糧', wood: '木', stone: '
 const BUILD_ORDER: BuildingId[] = ['barracks', 'farm', 'lumber', 'quarry', 'ironForge', 'mint'];
 
 function Campaign() {
-  const [formation, setFormation] = useState<{ id: string; troop: TroopType }[]>([{ id: 'zhaoyun', troop: 'cavalry' }]);
+  const [formation, setFormation] = useState<{ id: string; troop: TroopType }[]>([{ id: 'guanping', troop: 'spear' }]);
   const [started, setStarted] = useState(false);
-  const [ch, setCh] = useState<CampaignHero>({ hero: heroById('zhaoyun'), level: 1, xp: 0 });
+  const [ch, setCh] = useState<CampaignHero>({ hero: GUAN_PING, level: 1, xp: 0 });
   const [city, setCity] = useState<City>(newCity());
+  const [roster, setRoster] = useState<Roster>(() => newRoster(GUAN_PING));
   const [tileIdx, setTileIdx] = useState(0);
   const [seedCtr, setSeedCtr] = useState(1);
   const [outcome, setOutcome] = useState<(TileBattleOutcome & { events: CombatEvent[] }) | null>(null);
+  const [pulled, setPulled] = useState<RecruitResult | null>(null);
   const [hasSave, setHasSave] = useState(() => !!loadSave());
 
   // 自動存檔：開戰後，戰役狀態一變動即寫入 localStorage（§13.3 進度持久化）
   useEffect(() => {
     if (started) {
-      try { localStorage.setItem(SAVE_KEY, JSON.stringify(serializeCampaign({ formation, commander: ch, city, tileIdx, seedCtr }))); } catch { /* ignore */ }
+      try { localStorage.setItem(SAVE_KEY, JSON.stringify(serializeCampaign({ formation, commander: ch, city, roster, tileIdx, seedCtr }))); } catch { /* ignore */ }
     }
-  }, [started, formation, ch, city, tileIdx, seedCtr]);
+  }, [started, formation, ch, city, roster, tileIdx, seedCtr]);
 
   const resume = () => {
     const save = loadSave();
-    const st = save && deserializeCampaign(save, ROSTER);
+    const st = save && deserializeCampaign(save, RECRUIT_POOL);
     if (!st) { setHasSave(false); return; }
-    setFormation(st.formation); setCh(st.commander); setCity(st.city);
-    setTileIdx(st.tileIdx); setSeedCtr(st.seedCtr); setOutcome(null); setStarted(true);
+    setFormation(st.formation); setCh(st.commander); setCity(st.city); setRoster(st.roster);
+    setTileIdx(st.tileIdx); setSeedCtr(st.seedCtr); setOutcome(null); setPulled(null); setStarted(true);
   };
 
   const start = () => {
     clearSave(); setHasSave(false);
     setCh({ hero: heroById(formation[0].id), level: 1, xp: 0 });
-    setCity(newCity()); setTileIdx(0); setSeedCtr(1); setOutcome(null); setStarted(true);
+    setCity(newCity()); setRoster(newRoster(GUAN_PING)); setTileIdx(0); setSeedCtr(1); setOutcome(null); setPulled(null); setStarted(true);
   };
+
+  // 招募一名武將（花銀錢，§14）
+  const doRecruit = () => {
+    if (city.resources.silver < RECRUIT_COST) return;
+    const res = recruit(roster, RECRUIT_POOL, makeRng(seedCtr * 7919 + 13));
+    setCity((c) => addResources(c, { silver: -RECRUIT_COST }));
+    setSeedCtr((s) => s + 1);
+    setRoster(res.roster);
+    setPulled(res);
+  };
+
+  // 佈陣可選武將 = 已招募名冊
+  const ownedHeroes = ownedList(roster).map((o) => o.hero);
 
   const cleared = tileIdx >= TILES.length;
   const tile = cleared ? null : TILES[tileIdx];
@@ -177,22 +193,13 @@ function Campaign() {
     return (
       <>
         <div className="panel" style={{ maxWidth: 560, margin: '0 auto' }}>
-          <h2>🚩 開始打地戰役 — 佈陣</h2>
-          <p className="subtitle" style={{ textAlign: 'left' }}>編組最多 3 名武將（§7.1 主將+副將），從荒野 Lv.1 一路打到洛陽。核心循環：打地賺資源 → 蓋城（兵營帶更多兵）→ 打更高地。</p>
-          {formation.map((slot, i) => (
-            <div key={i} style={{ borderTop: '1px solid var(--line)', paddingTop: 8, marginTop: 8 }}>
-              <div className="row"><label>{i === 0 ? '主將' : `副將 ${i}`}</label>
-                <select value={slot.id} onChange={(e) => setFormation((f) => f.map((s, j) => j === i ? { ...s, id: e.target.value } : s))}>
-                  {HEROES.map((h) => <option key={h.id} value={h.id}>{HERO_NAME[h.id]}（{h.rarity}★）</option>)}
-                </select>
-                <select value={slot.troop} onChange={(e) => setFormation((f) => f.map((s, j) => j === i ? { ...s, troop: e.target.value as TroopType } : s))}>
-                  {TROOPS.map((t) => <option key={t.v} value={t.v}>{t.label}</option>)}
-                </select>
-                {formation.length > 1 && <button onClick={() => setFormation((f) => f.filter((_, j) => j !== i))} style={{ flex: '0 0 auto', background: '#5a2a2a', border: 'none', color: '#fff', borderRadius: 6, padding: '6px 10px', cursor: 'pointer' }}>移除</button>}
-              </div>
-            </div>
-          ))}
-          {formation.length < 3 && <div className="controls" style={{ margin: '12px 0 0' }}><button onClick={() => setFormation((f) => [...f, { id: HEROES.find((h) => !f.some((s) => s.id === h.id))?.id ?? 'guanping', troop: 'spear' }])} style={{ background: '#3a2e1e', border: '1px solid var(--line)', color: 'var(--ink)', borderRadius: 8, padding: '8px 16px', cursor: 'pointer' }}>＋ 加入武將</button></div>}
+          <h2>🚩 開始打地戰役</h2>
+          <p className="subtitle" style={{ textAlign: 'left' }}>起始主將關平（§4.3 贈送）。出征後在戰役中花銀錢招募更多武將、編入佈陣。核心循環：打地賺資源 → 招募/蓋城 → 變強 → 打更高地 → 攻克洛陽。</p>
+          <div className="row"><label>起始兵種</label>
+            <select value={formation[0].troop} onChange={(e) => setFormation([{ id: 'guanping', troop: e.target.value as TroopType }])}>
+              {TROOPS.map((t) => <option key={t.v} value={t.v}>{t.label}</option>)}
+            </select>
+          </div>
         </div>
         <div className="controls">
           {hasSave && <button className="fight" style={{ background: 'var(--gold)', color: '#1a1410' }} onClick={resume}>繼續上次戰役</button>}
@@ -206,12 +213,20 @@ function Campaign() {
     <>
       <div className="grid">
         <div className="panel side-att">
-          <h2>🗡️ 我軍（軍隊 Lv.{ch.level}）</h2>
-          {formation.map((f, i) => (
+          <h2>🗡️ 我軍佈陣（軍隊 Lv.{ch.level}）</h2>
+          {formation.map((slot, i) => (
             <div className="row" key={i}><label>{i === 0 ? '主將' : `副將${i}`}</label>
-              <span>{nameOf(f.id)} ／ {TROOPS.find((t) => t.v === f.troop)?.label} ／ {playerTroops} 兵</span></div>
+              <select value={slot.id} onChange={(e) => setFormation((f) => f.map((s, j) => j === i ? { ...s, id: e.target.value } : s))}>
+                {ownedHeroes.map((h) => <option key={h.id} value={h.id}>{nameOf(h.id)}（{h.rarity}★）</option>)}
+              </select>
+              <select value={slot.troop} onChange={(e) => setFormation((f) => f.map((s, j) => j === i ? { ...s, troop: e.target.value as TroopType } : s))}>
+                {TROOPS.map((t) => <option key={t.v} value={t.v}>{t.label}</option>)}
+              </select>
+              {formation.length > 1 && <button onClick={() => setFormation((f) => f.filter((_, j) => j !== i))} style={{ flex: '0 0 auto', background: '#5a2a2a', border: 'none', color: '#fff', borderRadius: 6, padding: '4px 8px', cursor: 'pointer' }}>✕</button>}
+            </div>
           ))}
-          <div className="row"><label>軍隊</label><span>Lv.{ch.level}／50（XP {ch.xp}）｜ 兵營 Lv.{city.levels.barracks}</span></div>
+          {formation.length < 3 && ownedHeroes.length > formation.length && <div style={{ marginBottom: 8 }}><button onClick={() => setFormation((f) => [...f, { id: ownedHeroes.find((h) => !f.some((s) => s.id === h.id))!.id, troop: 'spear' }])} style={{ background: '#3a2e1e', border: '1px solid var(--line)', color: 'var(--ink)', borderRadius: 8, padding: '6px 14px', cursor: 'pointer', fontSize: 13 }}>＋ 編入副將</button></div>}
+          <div className="row"><label>軍隊</label><span>Lv.{ch.level}／50（XP {ch.xp}）｜ 兵營 Lv.{city.levels.barracks} ｜ 各 {playerTroops} 兵</span></div>
           <div className="row"><label>進度</label><span>{Math.min(tileIdx, TILES.length)} / {TILES.length} 關</span></div>
         </div>
         <div className="panel side-def">
@@ -243,6 +258,16 @@ function Campaign() {
             );
           })}
         </div>
+      </div>
+
+      {/* 招募面板（§5.4/§14）*/}
+      <div className="panel" style={{ marginTop: 16 }}>
+        <h2>🎴 招募武將 ｜ 名冊 {ownedHeroes.length} 名 ｜ 保底 {roster.pity}/60</h2>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+          <button className="fight" disabled={city.resources.silver < RECRUIT_COST} onClick={doRecruit} style={{ background: city.resources.silver >= RECRUIT_COST ? 'var(--accent)' : '#444', fontSize: 14, padding: '8px 18px', cursor: city.resources.silver >= RECRUIT_COST ? 'pointer' : 'not-allowed' }}>招募（銀 {RECRUIT_COST}）</button>
+          {pulled && <span style={{ fontSize: 14 }}>招得 <b style={{ color: pulled.gotSix ? 'var(--gold)' : 'var(--ink)' }}>{nameOf(pulled.hero.id)}（{pulled.hero.rarity}★）</b>{pulled.dup ? ` — 重複！紅度 → ${pulled.redStars}` : ' — 新武將加入！'}</span>}
+        </div>
+        <div style={{ marginTop: 10, color: 'var(--muted)', fontSize: 13 }}>名冊：{ownedList(roster).map((o) => `${nameOf(o.hero.id)}(${'★'.repeat(o.redStars)})`).join('　')}</div>
       </div>
 
       <div className="controls">

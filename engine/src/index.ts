@@ -6,3 +6,5 @@ export * from './campaign';
 export * from './city';
 
 export * from './save';
+
+export * from './gacha';
