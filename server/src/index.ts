@@ -3,6 +3,11 @@
  *
  * 房間制：createRoom → 對手 joinRoom → 雙方 submit 佈陣 → 伺服器用引擎結算 → 廣播結果+戰報。
  * 路徑掛閘道 /sanguo/socket（與其他遊戲同模式）。
+ *
+ * M2：行軍時間 SLG
+ * - sg:march 改為送行軍令（不再即時翻面）
+ * - setInterval tick 每 ~2 秒檢查到達 → resolveMarchArrival → 廣播結果
+ * - 廣播：sg:marchUpdate（在途列表）、sg:marchArrived（到達+戰報）、sg:worldUpdate（翻面）
  */
 import { createServer } from 'http';
 import { Server } from 'socket.io';
@@ -12,6 +17,9 @@ import { newAlliance, joinAlliance, leaveAlliance, donate, alliancePerks, member
 import type { Alliance, AllianceTechId } from '../../engine/src/alliance';
 import { genWorld, spawnPlayer, captureTile, buildTent, powerScore, hexKey } from '../../engine/src/worldmap';
 import type { Axial } from '../../engine/src/worldmap';
+import { sendMarch, checkArrival, resolveMarchArrival } from '../../engine/src/march';
+import type { MarchOrder } from '../../engine/src/march';
+import { makeUnit, makeSquad, ZHAO_YUN } from '../../engine/src/sampleData';
 
 const PORT = Number(process.env.PORT ?? 3300);
 const SOCKET_PATH = process.env.SOCKET_PATH ?? '/sanguo/socket';
@@ -42,8 +50,74 @@ function worldView() {
   return { radius: world.radius, tiles, power };
 }
 
+// M2 行軍令狀態（伺服器持有）
+const marchOrders = new Map<string, MarchOrder>();
+
+/** 取玩家同盟的 marchSpeed 加成（%），預設 0 */
+function getMarchSpeedBonus(playerId: string): number {
+  for (const a of alliances.values()) {
+    if (a.members[playerId]) {
+      return a.tech.marchSpeed.level * 2; // 每級 +2%（對齊 ALLIANCE_TECH.marchSpeed.perLevel）
+    }
+  }
+  return 0;
+}
+
+/** 建一個攻擊用部隊（使用趙雲預設，後續可從玩家 submission 取） */
+function buildAttackSquad(playerId: string) {
+  // M2 暫時以單趙雲（帶兵 5000）代表玩家部隊；後續 M3+ 可接入 submission
+  const unit = makeUnit(ZHAO_YUN, 'cavalry', 5000, 'attacker');
+  return makeSquad([unit, unit, unit]);
+}
+
+/** 廣播在途行軍列表 */
+function broadcastMarchUpdate(io: Server) {
+  const list = Array.from(marchOrders.values()).filter((o) => o.status === 'marching').map((o) => ({
+    id: o.id,
+    playerId: o.playerId,
+    from: o.from,
+    to: o.to,
+    departAt: o.departAt,
+    arriveAt: o.arriveAt,
+  }));
+  io.to('world').emit('sg:marchUpdate', { orders: list });
+}
+
 const httpServer = createServer((_req, res) => { res.writeHead(200); res.end('sanguo-pvp ok'); });
 const io = new Server(httpServer, { path: SOCKET_PATH, cors: { origin: '*' } });
+
+// ── M2 行軍 tick（每 2 秒）────────────────────────────────────────
+setInterval(() => {
+  const now = Date.now();
+  for (const [id, order] of marchOrders) {
+    if (!checkArrival(order, now)) continue;
+
+    // 更新狀態為 arrived（避免重複結算）
+    marchOrders.set(id, { ...order, status: 'arrived' });
+
+    const squad = buildAttackSquad(order.playerId);
+    const seed = (Math.abs(order.to.q * 73856093) ^ Math.abs(order.to.r * 19349663)) % 2147483647;
+    const { map: updatedMap, outcome, order: doneOrder } = resolveMarchArrival(world, squad, order, seed);
+
+    world = updatedMap;
+    marchOrders.set(id, doneOrder);
+
+    // 廣播到達 + 戰報
+    io.to('world').emit('sg:marchArrived', {
+      orderId: id,
+      playerId: order.playerId,
+      to: order.to,
+      won: outcome.won,
+      turns: outcome.turns,
+      playerHpLeft: outcome.playerHpLeft,
+      garrisonHpLeft: outcome.garrisonHpLeft,
+    });
+
+    if (outcome.won) {
+      io.to('world').emit('sg:worldUpdate', worldView());
+    }
+  }
+}, 2000);
 
 io.on('connection', (socket) => {
   socket.on('sg:createRoom', (_d, cb?: (r: { roomId: string }) => void) => {
@@ -116,22 +190,46 @@ io.on('connection', (socket) => {
     socket.join('world');
     cb?.({ you: socket.id });
     io.to('world').emit('sg:worldUpdate', worldView());
+    // 新玩家進入時也廣播當前在途行軍
+    broadcastMarchUpdate(io);
   });
 
-  // march 出兵攻佔中立地塊（先打守軍，贏了翻面）
-  socket.on('sg:march', (d: { coord: Axial; submission: PvpSubmission }, cb?: (r: { ok: boolean; won?: boolean; turns?: number; error?: string }) => void) => {
-    const k = hexKey(d.coord);
-    const tile = world.tiles[k];
-    if (!tile) return cb?.({ ok: false, error: '地塊不存在' });
-    const seed = (Math.abs(d.coord.q * 73856093) ^ Math.abs(d.coord.r * 19349663)) % 2147483647;
-    const out = marchBattle(d.submission, tile.level, seed);
-    if (!out.won) return cb?.({ ok: true, won: false, turns: out.turns });
-    const cap = captureTile(world, socket.id, d.coord);
-    if (!cap.ok) return cb?.({ ok: false, error: cap.error });
-    world = cap.map;
-    cb?.({ ok: true, won: true, turns: out.turns });
-    io.to('world').emit('sg:worldUpdate', worldView());
-  });
+  // ── M2 sg:march（送行軍令，改為排程而非即時翻面）──
+  socket.on(
+    'sg:march',
+    (
+      d: { coord: Axial; submission?: PvpSubmission },
+      cb?: (r: { ok: boolean; order?: Omit<MarchOrder, 'status'>; error?: string }) => void,
+    ) => {
+      const tile = world.tiles[hexKey(d.coord)];
+      if (!tile) return cb?.({ ok: false, error: '地塊不存在' });
+
+      // 找玩家家園作為出發地塊（簡化：以家園為唯一出發點）
+      const spawnKey = world.spawns[socket.id];
+      if (!spawnKey) return cb?.({ ok: false, error: '尚未進入世界' });
+      const [fromQ, fromR] = spawnKey.split(',').map(Number);
+      const from: Axial = { q: fromQ, r: fromR };
+
+      const speedBonus = getMarchSpeedBonus(socket.id);
+      const result = sendMarch(
+        world,
+        { playerId: socket.id, squadId: `sq_${socket.id}`, from, to: d.coord },
+        Date.now(),
+        speedBonus,
+      );
+
+      if (!result.ok || !result.order) {
+        return cb?.({ ok: false, error: result.error });
+      }
+
+      marchOrders.set(result.order.id, result.order);
+
+      cb?.({ ok: true, order: { id: result.order.id, playerId: result.order.playerId, squadId: result.order.squadId, from: result.order.from, to: result.order.to, departAt: result.order.departAt, arriveAt: result.order.arriveAt } });
+
+      // 廣播最新行軍列表給所有在世界的玩家
+      broadcastMarchUpdate(io);
+    },
+  );
 
   socket.on('sg:buildTent', (d: { coord: Axial }) => {
     world = buildTent(world, socket.id, d.coord);
