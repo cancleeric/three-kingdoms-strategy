@@ -19,7 +19,15 @@ export interface HeroStats {
 export type Rarity = 3 | 4 | 5 | 6; // Star 3~6（SP 視為 6 + 標記）
 
 // ── §7.3 / §5.5 兵種 ───────────────────────────────────────────
-export type TroopType = 'cavalry' | 'spear' | 'shield' | 'bow' | 'apparatus';
+export type TroopType =
+  | 'cavalry'   // 騎兵
+  | 'spear'     // 槍兵
+  | 'shield'    // 盾兵
+  | 'bow'       // 弓兵
+  | 'apparatus' // 器械
+  | 'sword'     // 刀盾步兵（M3 新增）
+  | 'elephant'  // 象兵（M3 新增，南方特色）
+  | 'navy';     // 水軍（M3 新增，吳陣營特色）
 // 適性評級（兵種適性 §5.5）
 export type Aptitude = 'S' | 'A' | 'B' | 'C';
 

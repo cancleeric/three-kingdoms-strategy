@@ -5,6 +5,8 @@
  * §4.3 新手任務（引導序列）。純資料 + 純函式，可單元測試。
  */
 import { STATES, STATE_NAME, type StateId } from './worldmap';
+import type { FactionId } from './types';
+export { FACTION_NAME } from './types';
 
 // ── §4.1 主公類型 ───────────────────────────────────────────────
 export type LordType = 'sage' | 'hero' | 'wise';
@@ -55,9 +57,17 @@ export interface LordProfile {
   bannerColor: string;
   sigil: string;
   items: ItemType[]; // §4.2 起始道具（2 件）
+  faction?: FactionId; // M3：玩家選擇的陣營（可選，onboarding 步驟選定後存入）
 }
-export function newLordProfile(type: LordType, birthState: StateId, bannerColor: string, sigil: string, items: ItemType[]): LordProfile {
-  return { type, birthState, bannerColor, sigil, items: items.slice(0, 2) };
+export function newLordProfile(
+  type: LordType,
+  birthState: StateId,
+  bannerColor: string,
+  sigil: string,
+  items: ItemType[],
+  faction?: FactionId,
+): LordProfile {
+  return { type, birthState, bannerColor, sigil, items: items.slice(0, 2), faction };
 }
 
 /** 主公起始加成（§4.1 主公類型 + §4.2 道具件數計入裝備）。 */

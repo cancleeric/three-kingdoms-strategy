@@ -65,7 +65,7 @@ function garrisonHero(t: TileLevel): Hero {
   return {
     id: `garrison_${t.level}`, name: `守將·${t.name}`, faction: 'qun', rarity: 4, redStars: 0,
     stats: { force: t.garrisonForce, intellect: t.garrisonForce * 0.6, command: t.garrisonForce * 0.9, speed: 100 + t.level * 5, politics: 50, charm: 50 },
-    aptitude: { cavalry: 'B', spear: 'B', shield: 'B', bow: 'B', apparatus: 'B' },
+    aptitude: { cavalry: 'B', spear: 'B', shield: 'B', bow: 'B', apparatus: 'B', sword: 'B', elephant: 'B', navy: 'B' },
     innate: { id: `g_innate_${t.level}`, name: '據守', type: 'passive', level: 1, triggerRate: 0.3, coefficient: 1.2, damageKind: 'physical', targets: 1 },
     learnedSlots: [null, null],
   };

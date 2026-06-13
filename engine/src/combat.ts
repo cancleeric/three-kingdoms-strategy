@@ -36,20 +36,37 @@ export function makeRng(seed: number): () => number {
   };
 }
 
-// ── §7.3 兵種相剋（騎>弓>盾>槍>騎；器中立克工事）─────────────
-// key 克 value。匹配剋制 +15%，被剋 -15%（GDD 寫 10~20%，取中位 15%）。
+// ── §7.3 兵種相剋（8 兵種 M3 擴充）─────────────────────────────
+// 相剋關係設計：
+//   騎  > 弓  （騎兵突破弓陣）
+//   弓  > 盾  （弓矢穿盾）
+//   盾  > 槍  （盾牆壓槍）
+//   槍  > 騎  （長槍克騎）
+//   刀盾> 騎  （厚甲刀盾抗騎衝）
+//   象兵> 槍  （象兵踐踏長槍陣）
+//   水軍> 器械（水戰克攻城器械）
+//   器械> 象兵（器械遠射克象兵）
+// apparatus / navy 各有特殊相剋，elephant 剋槍但被器械剋。
+// key 克 value。匹配剋制 +15%，被剋 -15%。
 const COUNTERS: Record<TroopType, TroopType> = {
-  cavalry: 'bow',
-  bow: 'shield',
-  shield: 'spear',
-  spear: 'cavalry',
-  apparatus: 'apparatus', // 中立
+  cavalry:   'bow',       // 騎克弓
+  bow:       'shield',    // 弓克盾
+  shield:    'spear',     // 盾克槍
+  spear:     'cavalry',   // 槍克騎
+  apparatus: 'elephant',  // 器械克象兵
+  sword:     'cavalry',   // 刀盾克騎（步兵厚甲）
+  elephant:  'spear',     // 象兵克槍
+  navy:      'apparatus', // 水軍克器械（水戰克攻城器）
 };
 
+// 中立兵種（互無相剋）— 若某兵種在 COUNTERS 中既不克人也不被克，視為中立
+const NEUTRAL: Partial<Record<TroopType, true>> = {};
+
 export function troopMatchup(attacker: TroopType, defender: TroopType): number {
-  if (attacker === 'apparatus' || defender === 'apparatus') return 1.0;
   if (COUNTERS[attacker] === defender) return 1.15; // 克制
   if (COUNTERS[defender] === attacker) return 0.85; // 被克
+  // 同兵種或無相剋關係
+  void NEUTRAL;
   return 1.0;
 }
 
@@ -188,6 +205,43 @@ export function resolveFormation(
   return { buffPct };
 }
 
+// ── M3：兵種類戰法 pre-battle 結算 ──────────────────────────────
+// 兵種類戰法（type='troop'）在開戰前讀取：
+//   1. 若 effects[].kind='buff'，視為兵種傷害加成（%）
+//   2. troopOverride：未來擴充可指定換兵種（本版以 note 記錄）
+// 回傳每個 unit 的額外 troopBonus（乘數 +%）。
+export interface TroopTacticMod {
+  unitId: string;
+  bonusPct: number; // 兵種加成（如 15 = +15%）
+}
+
+export function resolveTroopTactics(
+  side: Squad,
+  events: CombatEvent[],
+): Map<string, number> {
+  // heroId → bonusPct（可疊加多個 troop 戰法）
+  const bonusMap = new Map<string, number>();
+  for (const u of side.units) {
+    let total = 0;
+    for (const t of tacticsOf(u, 'troop')) {
+      let pct = 0;
+      for (const eff of (t.effects ?? [])) {
+        if (eff.kind === 'buff' && eff.target === 'self') pct += eff.value;
+      }
+      total += pct;
+      events.push({
+        turn: 0,
+        phase: 'command', // 借用 command phase（pre-battle），troop tactic 以 tacticId 區分
+        actorId: u.hero.id,
+        tacticId: t.id,
+        note: `兵種加成 [${u.troopType}] +${pct}%`,
+      });
+    }
+    if (total > 0) bonusMap.set(u.hero.id, total);
+  }
+  return bonusMap;
+}
+
 // ── 主結算 ─────────────────────────────────────────────────────
 export interface BattleConfig {
   attacker: Squad;
@@ -215,6 +269,14 @@ export function resolveBattle(cfg: BattleConfig): BattleResult {
   const attFormation = resolveFormation(attacker, events);
   const defFormation = resolveFormation(defender, events);
 
+  // M3 Pre-battle: §兵種類 troop（formation 之後，command 之前）
+  const attTroopBonus = resolveTroopTactics(attacker, events);
+  const defTroopBonus = resolveTroopTactics(defender, events);
+  const troopBonusOf = (u: BattleUnit): number => {
+    const map = u.side === 'attacker' ? attTroopBonus : defTroopBonus;
+    return map.get(u.hero.id) ?? 0;
+  };
+
   // §6.1 指揮戰法：開戰生效（MVP 記錄事件，係數已內含於主動）
   for (const u of [...attacker.units, ...defender.units]) {
     for (const t of tacticsOf(u, 'command')) {
@@ -228,10 +290,11 @@ export function resolveBattle(cfg: BattleConfig): BattleResult {
       ? 1 + attFormation.buffPct / 100
       : 1 + defFormation.buffPct / 100;
 
-  // 包裝 computeDamage，套入陣法加成
+  // 包裝 computeDamage，套入陣法加成 + M3 兵種類戰法加成
   function dmgWith(ctx: DamageContext): number {
     const raw = computeDamage(ctx);
-    return raw * formationBonus(ctx.attacker);
+    const troopMult = 1 + troopBonusOf(ctx.attacker) / 100;
+    return raw * formationBonus(ctx.attacker) * troopMult;
   }
 
   let turn = 0;
