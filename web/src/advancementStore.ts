@@ -28,7 +28,22 @@ export function setAdvanceLevel(heroId: string, level: number): void {
   saveAdvancement(m);
 }
 
-/** 把該武將已存的進階等級套到屬性上（供實戰 buildSquad 用）。 */
+// M5-7 覺醒狀態（heroId → true）
+const AWAKEN_KEY = 'sanguo-awaken-v1';
+export function loadAwakened(): Record<string, boolean> {
+  try { const s = localStorage.getItem(AWAKEN_KEY); return s ? JSON.parse(s) as Record<string, boolean> : {}; }
+  catch { return {}; }
+}
+export function getAwakened(heroId: string): boolean {
+  return loadAwakened()[heroId] ?? false;
+}
+export function setAwakened(heroId: string): void {
+  const m = loadAwakened();
+  m[heroId] = true;
+  try { localStorage.setItem(AWAKEN_KEY, JSON.stringify(m)); } catch { /* ignore */ }
+}
+
+/** 把該武將進階等級 + 覺醒狀態套到屬性上（供實戰 buildSquad 用）。 */
 export function applyHeroAdvancement(hero: Hero): Hero {
-  return applyAdvancement(hero, getAdvanceLevel(hero.id));
+  return applyAdvancement(hero, getAdvanceLevel(hero.id), getAwakened(hero.id));
 }

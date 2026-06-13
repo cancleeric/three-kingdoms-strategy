@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { advancementBonus, advanceCost, applyAdvancement, ADVANCE_MAX, ADVANCE_PER } from './advancement';
+import { advancementBonus, advanceCost, applyAdvancement, canAwaken, AWAKEN_BONUS, ADVANCE_MAX, ADVANCE_PER } from './advancement';
 import { ROSTER } from './sampleData';
 
 const hero = ROSTER.find((h) => h.id === 'zhaoyun')!;
@@ -28,5 +28,19 @@ describe('advancement — 武將進階 (M5-4)', () => {
 
   it('0 階原樣回傳', () => {
     expect(applyAdvancement(hero, 0)).toBe(hero);
+  });
+
+  it('M5-7 覺醒：滿階才可覺醒', () => {
+    expect(canAwaken(ADVANCE_MAX, false)).toBe(true);
+    expect(canAwaken(ADVANCE_MAX - 1, false)).toBe(false); // 未滿階
+    expect(canAwaken(ADVANCE_MAX, true)).toBe(false); // 已覺醒
+  });
+
+  it('M5-7 覺醒額外 +25% 全屬性', () => {
+    const full = applyAdvancement(hero, ADVANCE_MAX, false);
+    const awakened = applyAdvancement(hero, ADVANCE_MAX, true);
+    expect(awakened.stats.force).toBeGreaterThan(full.stats.force);
+    // 覺醒總加成 = 滿階 30% + 覺醒 25%
+    expect(awakened.stats.force).toBe(Math.round(hero.stats.force * (1 + ADVANCE_MAX * ADVANCE_PER + AWAKEN_BONUS)));
   });
 });

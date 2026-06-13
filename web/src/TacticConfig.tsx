@@ -11,9 +11,9 @@
 
 import { useEffect, useState } from 'react';
 import { loadTacticConfig, saveTacticConfig } from './tacticStore';
-import { loadAdvancement, setAdvanceLevel } from './advancementStore';
+import { loadAdvancement, setAdvanceLevel, loadAwakened, setAwakened } from './advancementStore';
 import { loadManuals, setManual } from './manualStore';
-import { advanceCost, advancementBonus, ADVANCE_MAX, WAR_MANUALS } from './engine';
+import { advanceCost, advancementBonus, ADVANCE_MAX, canAwaken, AWAKEN_BONUS, WAR_MANUALS } from './engine';
 import type { Hero, Tactic, TacticLibrary, TacticType } from './engine/types';
 import {
   ROSTER, RECRUIT_POOL,
@@ -93,6 +93,8 @@ function HeroTacticCard({
   lib,
   advanceLevel,
   onAdvance,
+  awakened,
+  onAwaken,
   manualId,
   onSetManual,
   onLearnSlot,
@@ -103,6 +105,8 @@ function HeroTacticCard({
   lib: TacticLibrary;
   advanceLevel: number;
   onAdvance: () => void;
+  awakened: boolean;
+  onAwaken: () => void;
   manualId: string;
   onSetManual: (id: string) => void;
   onLearnSlot: (slotIdx: 0 | 1) => void;
@@ -127,11 +131,16 @@ function HeroTacticCard({
       <div style={{ ...style.row, marginBottom: 10, gap: 10 }}>
         <span style={{ fontSize: 13, color: '#8a7a5a' }}>進階</span>
         <span>{'◆'.repeat(advanceLevel)}{'◇'.repeat(ADVANCE_MAX - advanceLevel)}</span>
-        <span style={{ color: 'var(--gold)', fontSize: 13 }}>（全屬性 +{Math.round(advancementBonus(advanceLevel) * 100)}%）</span>
-        <button onClick={onAdvance} disabled={advCost === null}
-          style={{ padding: '3px 12px', background: advCost === null ? '#333' : '#7a5c12', color: '#fff', border: 'none', borderRadius: 4, cursor: advCost === null ? 'not-allowed' : 'pointer', fontSize: 12 }}>
-          {advCost === null ? '已滿階' : `進階（銀 ${advCost}）`}
-        </button>
+        <span style={{ color: 'var(--gold)', fontSize: 13 }}>（全屬性 +{Math.round((advancementBonus(advanceLevel) + (awakened ? AWAKEN_BONUS : 0)) * 100)}%{awakened ? ' ✨覺醒' : ''}）</span>
+        {!awakened && (
+          <button onClick={onAdvance} disabled={advCost === null}
+            style={{ padding: '3px 12px', background: advCost === null ? '#333' : '#7a5c12', color: '#fff', border: 'none', borderRadius: 4, cursor: advCost === null ? 'not-allowed' : 'pointer', fontSize: 12 }}>
+            {advCost === null ? '已滿階' : `進階（銀 ${advCost}）`}
+          </button>
+        )}
+        {canAwaken(advanceLevel, awakened) && (
+          <button onClick={onAwaken} style={{ padding: '3px 12px', background: '#8a3a8a', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer', fontSize: 12 }}>✨ 覺醒（+25%）</button>
+        )}
       </div>
 
       {/* M5-6 兵書 */}
@@ -335,6 +344,8 @@ export default function TacticConfig() {
   const [advancement, setAdvancement] = useState<Record<string, number>>(() => loadAdvancement());
   // M5-6 兵書（heroId → manualId，持久化於 manualStore）
   const [manuals, setManuals] = useState<Record<string, string>>(() => loadManuals());
+  // M5-7 覺醒（heroId → true）
+  const [awakenedMap, setAwakenedMap] = useState<Record<string, boolean>>(() => loadAwakened());
 
   // M1.5：配置任一變動即持久化，讓打地戰役/沙盒/PvP 實戰吃到
   useEffect(() => {
@@ -359,6 +370,13 @@ export default function TacticConfig() {
   const handleSetManual = (id: string) => {
     setManual(hero.id, id);
     setManuals((m) => { const n = { ...m }; if (id) n[hero.id] = id; else delete n[hero.id]; return n; });
+  };
+
+  // M5-7：覺醒（一次性）
+  const handleAwaken = () => {
+    setAwakened(hero.id);
+    setAwakenedMap((m) => ({ ...m, [hero.id]: true }));
+    showMsg(`${nameOf(hero.id)} 覺醒！全屬性額外 +${Math.round(AWAKEN_BONUS * 100)}%`);
   };
 
   const showMsg = (msg: string) => {
@@ -463,6 +481,8 @@ export default function TacticConfig() {
             lib={lib}
             advanceLevel={advancement[hero.id] ?? 0}
             onAdvance={handleAdvance}
+            awakened={awakenedMap[hero.id] ?? false}
+            onAwaken={handleAwaken}
             manualId={manuals[hero.id] ?? ''}
             onSetManual={handleSetManual}
             onLearnSlot={handleLearnSlot}

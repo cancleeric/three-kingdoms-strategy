@@ -20,10 +20,18 @@ export function advanceCost(level: number): number | null {
   return (level + 1) * 300;
 }
 
+// ── 覺醒（M5-7）：進階滿階後一次性質變，全屬性 +25% ──────────────
+export const AWAKEN_BONUS = 0.25;
+/** 是否可覺醒：進階已滿階且尚未覺醒。 */
+export function canAwaken(level: number, awakened: boolean): boolean {
+  return level >= ADVANCE_MAX && !awakened;
+}
+
 /** 把進階加成套到武將全屬性。level<=0 原樣回傳。 */
-export function applyAdvancement(hero: Hero, level: number): Hero {
-  if (level <= 0) return hero;
-  const b = 1 + advancementBonus(level);
+export function applyAdvancement(hero: Hero, level: number, awakened = false): Hero {
+  const bonus = advancementBonus(level) + (awakened ? AWAKEN_BONUS : 0);
+  if (bonus <= 0) return hero;
+  const b = 1 + bonus;
   const s = hero.stats;
   return {
     ...hero,
