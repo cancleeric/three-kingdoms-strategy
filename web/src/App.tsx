@@ -7,8 +7,9 @@ import {
   newCity, produce, upgrade, addResources, troopCapacity, upgradeCost, canAfford, BUILDINGS,
   serializeCampaign, deserializeCampaign,
   newRoster, recruit, ownedList, RECRUIT_COST,
+  newAccount, endAndAdvance, SEASON_NAME,
 } from './engine';
-import type { Hero, TroopType, CombatEvent, CampaignHero, TileBattleOutcome, City, BuildingId, Resource, SaveState, Roster, RecruitResult } from './engine';
+import type { Hero, TroopType, CombatEvent, CampaignHero, TileBattleOutcome, City, BuildingId, Resource, SaveState, Roster, RecruitResult, Account } from './engine';
 
 const SAVE_KEY = 'sanguo-campaign-v1';
 const loadSave = (): SaveState | null => {
@@ -126,6 +127,7 @@ function Campaign() {
   const [ch, setCh] = useState<CampaignHero>({ hero: GUAN_PING, level: 1, xp: 0 });
   const [city, setCity] = useState<City>(newCity());
   const [roster, setRoster] = useState<Roster>(() => newRoster(GUAN_PING));
+  const [account, setAccount] = useState<Account>(() => newAccount(newRoster(GUAN_PING)));
   const [tileIdx, setTileIdx] = useState(0);
   const [seedCtr, setSeedCtr] = useState(1);
   const [outcome, setOutcome] = useState<(TileBattleOutcome & { events: CombatEvent[] }) | null>(null);
@@ -135,22 +137,33 @@ function Campaign() {
   // 自動存檔：開戰後，戰役狀態一變動即寫入 localStorage（§13.3 進度持久化）
   useEffect(() => {
     if (started) {
-      try { localStorage.setItem(SAVE_KEY, JSON.stringify(serializeCampaign({ formation, commander: ch, city, roster, tileIdx, seedCtr }))); } catch { /* ignore */ }
+      const season = { seasonNumber: account.seasonNumber, seasonType: account.seasonType, prestige: account.prestige, rank: account.rank };
+      try { localStorage.setItem(SAVE_KEY, JSON.stringify(serializeCampaign({ formation, commander: ch, city, roster, tileIdx, seedCtr, season }))); } catch { /* ignore */ }
     }
-  }, [started, formation, ch, city, roster, tileIdx, seedCtr]);
+  }, [started, formation, ch, city, roster, tileIdx, seedCtr, account]);
 
   const resume = () => {
     const save = loadSave();
     const st = save && deserializeCampaign(save, RECRUIT_POOL);
     if (!st) { setHasSave(false); return; }
     setFormation(st.formation); setCh(st.commander); setCity(st.city); setRoster(st.roster);
+    if (st.season) setAccount((a) => ({ ...a, seasonNumber: st.season!.seasonNumber, seasonType: st.season!.seasonType as Account['seasonType'], prestige: st.season!.prestige, rank: st.season!.rank, roster: st.roster }));
     setTileIdx(st.tileIdx); setSeedCtr(st.seedCtr); setOutcome(null); setPulled(null); setStarted(true);
   };
 
   const start = () => {
     clearSave(); setHasSave(false);
     setCh({ hero: heroById(formation[0].id), level: 1, xp: 0 });
-    setCity(newCity()); setRoster(newRoster(GUAN_PING)); setTileIdx(0); setSeedCtr(1); setOutcome(null); setPulled(null); setStarted(true);
+    setCity(newCity()); setRoster(newRoster(GUAN_PING)); setAccount(newAccount(newRoster(GUAN_PING)));
+    setTileIdx(0); setSeedCtr(1); setOutcome(null); setPulled(null); setStarted(true);
+  };
+
+  // §13 進入下一賽季：結算聲望、英雄/紅度保留、地圖/城建/佈陣重置
+  const nextSeason = () => {
+    const { account: adv } = endAndAdvance(account, roster, tileIdx);
+    setAccount({ ...adv, roster });
+    setCh({ hero: heroById(formation[0].id), level: 1, xp: 0 });
+    setCity(newCity()); setTileIdx(0); setOutcome(null); setPulled(null);
   };
 
   // 招募一名武將（花銀錢，§14）
@@ -214,7 +227,7 @@ function Campaign() {
     <>
       <div className="grid">
         <div className="panel side-att">
-          <h2>🗡️ 我軍佈陣（軍隊 Lv.{ch.level}）</h2>
+          <h2>🗡️ 我軍佈陣 ｜ {SEASON_NAME[account.seasonType]} ｜ 聲望 {account.prestige}（{account.rank}階）</h2>
           {formation.map((slot, i) => (
             <div className="row" key={i}><label>{i === 0 ? '主將' : `副將${i}`}</label>
               <select value={slot.id} onChange={(e) => setFormation((f) => f.map((s, j) => j === i ? { ...s, id: e.target.value } : s))}>
@@ -273,7 +286,8 @@ function Campaign() {
 
       <div className="controls">
         {cleared
-          ? <div className="winner">🎉 攻克洛陽，問鼎天下！</div>
+          ? <><div className="winner">🎉 攻克洛陽！本賽季結算 +聲望 {tileIdx * 100 + 500}</div>
+              <button className="fight" style={{ background: 'var(--gold)', color: '#1a1410' }} onClick={nextSeason}>進入下一賽季（保留武將/紅度）</button></>
           : <button className="fight" onClick={attack}>攻打 {tile!.name}</button>}
         <button className="fight" style={{ background: '#444' }} onClick={() => { clearSave(); setHasSave(false); setStarted(false); }}>重新佈陣</button>
       </div>

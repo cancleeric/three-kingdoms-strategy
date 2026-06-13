@@ -9,7 +9,7 @@ import type { CampaignHero } from './campaign';
 import type { City } from './city';
 import type { Roster } from './gacha';
 
-export const SAVE_VERSION = 2;
+export const SAVE_VERSION = 3;
 
 export interface CampaignState {
   formation: { id: string; troop: TroopType }[];
@@ -18,6 +18,7 @@ export interface CampaignState {
   roster: Roster; // 招募名冊（含紅度/pity）
   tileIdx: number;
   seedCtr: number;
+  season?: { seasonNumber: number; seasonType: string; prestige: number; rank: number }; // §13 賽季帳號
 }
 
 export interface SaveState {
@@ -30,6 +31,7 @@ export interface SaveState {
   roster: { owned: Record<string, number>; pity: number }; // heroId → 紅度
   tileIdx: number;
   seedCtr: number;
+  season?: { seasonNumber: number; seasonType: string; prestige: number; rank: number };
 }
 
 export function serializeCampaign(s: CampaignState): SaveState {
@@ -45,6 +47,7 @@ export function serializeCampaign(s: CampaignState): SaveState {
     roster: { owned, pity: s.roster.pity },
     tileIdx: s.tileIdx,
     seedCtr: s.seedCtr,
+    season: s.season,
   };
 }
 
@@ -65,5 +68,6 @@ export function deserializeCampaign(save: SaveState, pool: Hero[]): CampaignStat
     roster: { owned, pity: save.roster?.pity ?? 0 },
     tileIdx: save.tileIdx,
     seedCtr: save.seedCtr,
+    season: save.season,
   };
 }

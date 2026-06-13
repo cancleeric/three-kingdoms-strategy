@@ -8,3 +8,5 @@ export * from './city';
 export * from './save';
 
 export * from './gacha';
+
+export * from './season';
