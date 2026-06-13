@@ -1,11 +1,18 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   ROSTER,
   makeUnit, makeSquad, resolveBattle,
   TILES, grantXp, leveledHero, attackTile, makeGarrison,
   newCity, produce, upgrade, addResources, troopCapacity, upgradeCost, canAfford, BUILDINGS,
+  serializeCampaign, deserializeCampaign,
 } from './engine';
-import type { Hero, TroopType, CombatEvent, CampaignHero, TileBattleOutcome, City, BuildingId, Resource } from './engine';
+import type { Hero, TroopType, CombatEvent, CampaignHero, TileBattleOutcome, City, BuildingId, Resource, SaveState } from './engine';
+
+const SAVE_KEY = 'sanguo-campaign-v1';
+const loadSave = (): SaveState | null => {
+  try { const s = localStorage.getItem(SAVE_KEY); return s ? JSON.parse(s) as SaveState : null; } catch { return null; }
+};
+const clearSave = () => { try { localStorage.removeItem(SAVE_KEY); } catch { /* ignore */ } };
 
 const HEROES: Hero[] = ROSTER;
 const HERO_NAME: Record<string, string> = { zhaoyun: '趙雲', lubu: '呂布', zhuge: '諸葛亮', luxun: '陸遜', zhouyu: '周瑜', guanping: '關平' };
@@ -119,8 +126,25 @@ function Campaign() {
   const [tileIdx, setTileIdx] = useState(0);
   const [seedCtr, setSeedCtr] = useState(1);
   const [outcome, setOutcome] = useState<(TileBattleOutcome & { events: CombatEvent[] }) | null>(null);
+  const [hasSave, setHasSave] = useState(() => !!loadSave());
+
+  // 自動存檔：開戰後，戰役狀態一變動即寫入 localStorage（§13.3 進度持久化）
+  useEffect(() => {
+    if (started) {
+      try { localStorage.setItem(SAVE_KEY, JSON.stringify(serializeCampaign({ formation, commander: ch, city, tileIdx, seedCtr }))); } catch { /* ignore */ }
+    }
+  }, [started, formation, ch, city, tileIdx, seedCtr]);
+
+  const resume = () => {
+    const save = loadSave();
+    const st = save && deserializeCampaign(save, ROSTER);
+    if (!st) { setHasSave(false); return; }
+    setFormation(st.formation); setCh(st.commander); setCity(st.city);
+    setTileIdx(st.tileIdx); setSeedCtr(st.seedCtr); setOutcome(null); setStarted(true);
+  };
 
   const start = () => {
+    clearSave(); setHasSave(false);
     setCh({ hero: heroById(formation[0].id), level: 1, xp: 0 });
     setCity(newCity()); setTileIdx(0); setSeedCtr(1); setOutcome(null); setStarted(true);
   };
@@ -170,7 +194,10 @@ function Campaign() {
           ))}
           {formation.length < 3 && <div className="controls" style={{ margin: '12px 0 0' }}><button onClick={() => setFormation((f) => [...f, { id: HEROES.find((h) => !f.some((s) => s.id === h.id))?.id ?? 'guanping', troop: 'spear' }])} style={{ background: '#3a2e1e', border: '1px solid var(--line)', color: 'var(--ink)', borderRadius: 8, padding: '8px 16px', cursor: 'pointer' }}>＋ 加入武將</button></div>}
         </div>
-        <div className="controls"><button className="fight" onClick={start}>出 征</button></div>
+        <div className="controls">
+          {hasSave && <button className="fight" style={{ background: 'var(--gold)', color: '#1a1410' }} onClick={resume}>繼續上次戰役</button>}
+          <button className="fight" onClick={start}>{hasSave ? '新戰役' : '出 征'}</button>
+        </div>
       </>
     );
   }
@@ -222,7 +249,7 @@ function Campaign() {
         {cleared
           ? <div className="winner">🎉 攻克洛陽，問鼎天下！</div>
           : <button className="fight" onClick={attack}>攻打 {tile!.name}</button>}
-        <button className="fight" style={{ background: '#444' }} onClick={() => setStarted(false)}>重新開始</button>
+        <button className="fight" style={{ background: '#444' }} onClick={() => { clearSave(); setHasSave(false); setStarted(false); }}>重新佈陣</button>
       </div>
       {outcome && (
         <>
