@@ -22,6 +22,7 @@ import {
 } from './engine/sampleData';
 import {
   disassembleHero,
+  inheritTactic,
   learnTactic,
   upgradeTactic,
   availableToLearn,
@@ -464,6 +465,16 @@ export default function TacticConfig() {
     showMsg(`拆解 ${nameOf(target.id)} — 獲得：${gained}`);
   };
 
+  // M5-12：戰法傳承（將來源武將自帶戰法傳為 1 書）
+  const [inheritSrc, setInheritSrc] = useState<string>('');
+  const handleInherit = () => {
+    const src = ROSTER.find((h) => h.id === inheritSrc) ?? RECRUIT_POOL.find((h) => h.id === inheritSrc);
+    if (!src) { showMsg('請選擇傳承來源武將'); return; }
+    const r = inheritTactic(src, lib);
+    setLib(r.lib);
+    showMsg(`傳承 ${nameOf(src.id)} 的「${r.name}」絕學 — 書庫 +1（可供他將習得）`);
+  };
+
   return (
     <div style={style.wrap}>
       <h2 style={{ color: '#c9a227', marginBottom: 16 }}>武將戰法配置</h2>
@@ -524,6 +535,20 @@ export default function TacticConfig() {
             activeSlot={activeSlot}
             onLearn={handleLearn}
           />
+        </div>
+      </div>
+
+      {/* M5-12 戰法傳承 */}
+      <div style={{ ...style.panel, marginTop: 16 }}>
+        <h3 style={{ color: '#c9a227', marginTop: 0, fontSize: 16 }}>📜 戰法傳承（繼承名將絕學為書）</h3>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+          <span style={{ fontSize: 13, color: '#8a7a5a' }}>傳承來源</span>
+          <select value={inheritSrc} onChange={(e) => setInheritSrc(e.target.value)}>
+            <option value="">選擇武將</option>
+            {ROSTER.map((h) => <option key={h.id} value={h.id}>{nameOf(h.id)}（{h.innate.name}）</option>)}
+          </select>
+          <button onClick={handleInherit} style={{ padding: '4px 14px', background: '#5a3a7a', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer', fontSize: 13 }}>傳承</button>
+          <span style={{ color: '#8a7a5a', fontSize: 12 }}>將該武將自帶戰法傳為 1 本書，他將可習得</span>
         </div>
       </div>
 

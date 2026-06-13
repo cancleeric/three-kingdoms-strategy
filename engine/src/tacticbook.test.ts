@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   newTacticLibrary,
   disassembleHero,
+  inheritTactic,
   learnTactic,
   upgradeTactic,
   availableToLearn,
@@ -16,6 +17,22 @@ const threeStarHero: Hero = { ...GUAN_PING, rarity: 3, learnedSlots: [null, null
 
 // 測試用戰法列表
 const allTactics: Tactic[] = [genericActive, tacticFormation];
+
+describe('inheritTactic — 戰法傳承 (M5-12)', () => {
+  it('傳承武將自帶戰法為 1 本書', () => {
+    const lib = newTacticLibrary();
+    const r = inheritTactic(sixStarHero, lib);
+    expect(r.tacticId).toBe(sixStarHero.innate.id);
+    expect(r.name).toBe(sixStarHero.innate.name);
+    expect(r.lib.books[sixStarHero.innate.id]?.quantity).toBe(1);
+  });
+  it('傳承固定 1 本（不依稀有度）', () => {
+    const r3 = inheritTactic(threeStarHero, newTacticLibrary());
+    const r6 = inheritTactic(sixStarHero, newTacticLibrary());
+    expect(r3.lib.books[threeStarHero.innate.id]?.quantity).toBe(1);
+    expect(r6.lib.books[sixStarHero.innate.id]?.quantity).toBe(1);
+  });
+});
 
 describe('disassembleHero — 拆書數量', () => {
   it('拆 3★ 武將得 1 本自帶書', () => {

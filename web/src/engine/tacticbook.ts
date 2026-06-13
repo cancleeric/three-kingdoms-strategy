@@ -66,6 +66,15 @@ export function disassembleHero(
 }
 
 /**
+ * M5-12 戰法傳承：把來源武將的自帶戰法傳為 1 本書（供他將習得）。
+ * 與拆書(依稀有度多本)不同——傳承固定 1 本，框架為「繼承名將絕學」。
+ */
+export function inheritTactic(source: Hero, lib: TacticLibrary): { lib: TacticLibrary; tacticId: string; name: string } {
+  const tacticId = source.innate.id;
+  return { lib: addBooks(lib, tacticId, 1), tacticId, name: source.innate.name };
+}
+
+/**
  * 習得戰法：消耗 1 本對應書，寫入 hero.learnedSlots[slotIdx]。
  * 條件：
  *  1. lib 中有至少 1 本對應書
