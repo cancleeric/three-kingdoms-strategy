@@ -2,11 +2,13 @@ import { useMemo, useState } from 'react';
 import {
   ZHAO_YUN, LU_XUN, GUAN_PING,
   makeUnit, makeSquad, resolveBattle,
+  TILES, grantXp, leveledHero, attackTile, makeGarrison,
 } from './engine';
-import type { Hero, TroopType, CombatEvent } from './engine';
+import type { Hero, TroopType, CombatEvent, CampaignHero, TileBattleOutcome } from './engine';
 
 const HEROES: Hero[] = [ZHAO_YUN, LU_XUN, GUAN_PING];
 const HERO_NAME: Record<string, string> = { zhaoyun: '趙雲', luxun: '陸遜', guanping: '關平' };
+const nameOf = (id: string) => HERO_NAME[id] ?? (id.startsWith('garrison') ? '守將' : id);
 const TROOPS: { v: TroopType; label: string }[] = [
   { v: 'cavalry', label: '騎兵' }, { v: 'spear', label: '槍兵' },
   { v: 'shield', label: '盾兵' }, { v: 'bow', label: '弓兵' }, { v: 'apparatus', label: '器械' },
@@ -16,34 +18,8 @@ const PHASE_LABEL: Record<CombatEvent['phase'], string> = {
 };
 const WINNER_LABEL: Record<string, string> = { attacker: '進攻方勝', defender: '防守方勝', draw: '平手' };
 
-export default function App() {
-  const [attHero, setAttHero] = useState('zhaoyun');
-  const [attTroop, setAttTroop] = useState<TroopType>('cavalry');
-  const [defHero, setDefHero] = useState('luxun');
-  const [defTroop, setDefTroop] = useState<TroopType>('bow');
-  const [troops, setTroops] = useState(5000);
-  const [seed, setSeed] = useState(42);
-  const [result, setResult] = useState<ReturnType<typeof resolveBattle> | null>(null);
-
-  const fight = () => {
-    const a = HEROES.find((h) => h.id === attHero)!;
-    const d = HEROES.find((h) => h.id === defHero)!;
-    const att = makeSquad([makeUnit(a, attTroop, troops, 'attacker')]);
-    const def = makeSquad([makeUnit(d, defTroop, troops, 'defender')]);
-    setResult(resolveBattle({ attacker: att, defender: def, seed }));
-  };
-
-  const byTurn = useMemo(() => {
-    if (!result) return [];
-    const map = new Map<number, CombatEvent[]>();
-    for (const e of result.events) {
-      if (!map.has(e.turn)) map.set(e.turn, []);
-      map.get(e.turn)!.push(e);
-    }
-    return [...map.entries()].sort((x, y) => x[0] - y[0]);
-  }, [result]);
-
-  const Picker = ({ hero, troop, onHero, onTroop }: { hero: string; troop: TroopType; onHero: (v: string) => void; onTroop: (v: TroopType) => void }) => (
+function HeroPicker({ hero, troop, onHero, onTroop }: { hero: string; troop: TroopType; onHero: (v: string) => void; onTroop: (v: TroopType) => void }) {
+  return (
     <>
       <div className="row"><label>武將</label>
         <select value={hero} onChange={(e) => onHero(e.target.value)}>
@@ -57,57 +33,181 @@ export default function App() {
       </div>
     </>
   );
+}
+
+function BattleLog({ events }: { events: CombatEvent[] }) {
+  const byTurn = useMemo(() => {
+    const map = new Map<number, CombatEvent[]>();
+    for (const e of events) { if (!map.has(e.turn)) map.set(e.turn, []); map.get(e.turn)!.push(e); }
+    return [...map.entries()].sort((x, y) => x[0] - y[0]);
+  }, [events]);
+  return (
+    <div className="log">
+      {byTurn.map(([t, evs]) => (
+        <div key={t}>
+          <div className="turn-head">{t === 0 ? '開戰' : `第 ${t} 回合`}</div>
+          {evs.map((e, i) => (
+            <div className="ev" key={i}>
+              <span className="phase-tag">[{PHASE_LABEL[e.phase]}]</span>{' '}
+              <span>{nameOf(e.actorId)}</span>
+              {e.tacticId && <span> 施展戰法</span>}
+              {e.targetId && <span> → {nameOf(e.targetId)}</span>}
+              {e.damage != null && <span className="dmg"> 造成 {e.damage} 傷害</span>}
+            </div>
+          ))}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ── 沙盒模式 ───────────────────────────────────────────────────
+function Sandbox() {
+  const [attHero, setAttHero] = useState('zhaoyun');
+  const [attTroop, setAttTroop] = useState<TroopType>('cavalry');
+  const [defHero, setDefHero] = useState('luxun');
+  const [defTroop, setDefTroop] = useState<TroopType>('bow');
+  const [troops, setTroops] = useState(5000);
+  const [seed, setSeed] = useState(42);
+  const [result, setResult] = useState<ReturnType<typeof resolveBattle> | null>(null);
+
+  const fight = () => {
+    const a = HEROES.find((h) => h.id === attHero)!;
+    const d = HEROES.find((h) => h.id === defHero)!;
+    setResult(resolveBattle({
+      attacker: makeSquad([makeUnit(a, attTroop, troops, 'attacker')]),
+      defender: makeSquad([makeUnit(d, defTroop, troops, 'defender')]),
+      seed,
+    }));
+  };
 
   return (
-    <div className="wrap">
-      <h1>三國志戰略 — 戰鬥模擬器</h1>
-      <p className="subtitle">自動戰鬥引擎 v0.1（決定性、兵種相剋、戰法、士氣、8 回合）。同 seed 完全重現。</p>
-
+    <>
       <div className="grid">
-        <div className="panel side-att">
-          <h2>⚔️ 進攻方</h2>
-          <Picker hero={attHero} troop={attTroop} onHero={setAttHero} onTroop={setAttTroop} />
-        </div>
-        <div className="panel side-def">
-          <h2>🛡️ 防守方</h2>
-          <Picker hero={defHero} troop={defTroop} onHero={setDefHero} onTroop={setDefTroop} />
-        </div>
+        <div className="panel side-att"><h2>⚔️ 進攻方</h2><HeroPicker hero={attHero} troop={attTroop} onHero={setAttHero} onTroop={setAttTroop} /></div>
+        <div className="panel side-def"><h2>🛡️ 防守方</h2><HeroPicker hero={defHero} troop={defTroop} onHero={setDefHero} onTroop={setDefTroop} /></div>
       </div>
-
       <div className="controls">
         <span>兵力 <input type="number" style={{ width: 90 }} value={troops} onChange={(e) => setTroops(+e.target.value || 0)} /></span>
         <span>Seed <input type="number" style={{ width: 90 }} value={seed} onChange={(e) => setSeed(+e.target.value || 0)} /></span>
         <button className="fight" onClick={fight}>開 戰</button>
       </div>
-
       {result && (
         <>
           <div className="result">
             <div className="winner">{WINNER_LABEL[result.winner]}</div>
             <div className="subtitle">共 {result.turns} 回合 ｜ 進攻方剩餘 {result.attackerHpLeft} ｜ 防守方剩餘 {result.defenderHpLeft}</div>
           </div>
-          <div className="log">
-            {byTurn.map(([t, evs]) => (
-              <div key={t}>
-                <div className="turn-head">{t === 0 ? '開戰' : `第 ${t} 回合`}</div>
-                {evs.map((e, i) => {
-                  const actorName = HERO_NAME[e.actorId] ?? e.actorId;
-                  const targetName = e.targetId ? (HERO_NAME[e.targetId] ?? e.targetId) : '';
-                  return (
-                    <div className="ev" key={i}>
-                      <span className="phase-tag">[{PHASE_LABEL[e.phase]}]</span>{' '}
-                      <span>{actorName}</span>
-                      {e.tacticId && <span> 施展戰法</span>}
-                      {targetName && <span> → {targetName}</span>}
-                      {e.damage != null && <span className="dmg"> 造成 {e.damage} 傷害</span>}
-                    </div>
-                  );
-                })}
-              </div>
-            ))}
-          </div>
+          <BattleLog events={result.events} />
         </>
       )}
+    </>
+  );
+}
+
+// ── 打地戰役模式 ───────────────────────────────────────────────
+function Campaign() {
+  const [picked, setPicked] = useState('zhaoyun');
+  const [troop, setTroop] = useState<TroopType>('cavalry');
+  const [started, setStarted] = useState(false);
+  const [ch, setCh] = useState<CampaignHero>({ hero: ZHAO_YUN, level: 1, xp: 0 });
+  const [tileIdx, setTileIdx] = useState(0);
+  const [silver, setSilver] = useState(0);
+  const [seedCtr, setSeedCtr] = useState(1);
+  const [outcome, setOutcome] = useState<(TileBattleOutcome & { events: CombatEvent[] }) | null>(null);
+
+  const start = () => {
+    setCh({ hero: HEROES.find((h) => h.id === picked)!, level: 1, xp: 0 });
+    setTileIdx(0); setSilver(0); setSeedCtr(1); setOutcome(null); setStarted(true);
+  };
+
+  const cleared = tileIdx >= TILES.length;
+  const tile = cleared ? null : TILES[tileIdx];
+  const playerTroops = 2000 + ch.level * 120; // §7.2 帶兵量隨等級
+  const lh = leveledHero(ch);
+
+  const attack = () => {
+    if (!tile) return;
+    const squad = makeSquad([makeUnit(lh, troop, playerTroops, 'attacker')]);
+    // attackTile 取得結果（勝負/獎勵）；再以相同守軍+seed 重跑取戰報事件（決定性，結果一致）
+    const out = attackTile(squad, tile, seedCtr);
+    const full = resolveBattle({
+      attacker: makeSquad([makeUnit(lh, troop, playerTroops, 'attacker')]),
+      defender: makeGarrison(tile),
+      seed: seedCtr,
+    });
+    setOutcome({ ...out, events: full.events });
+    setSeedCtr((s) => s + 1);
+    if (out.won && out.reward) {
+      setCh((c) => grantXp(c, out.reward!.xp));
+      setSilver((s) => s + out.reward!.silver);
+      setTileIdx((i) => i + 1);
+    }
+  };
+
+  if (!started) {
+    return (
+      <>
+        <div className="panel" style={{ maxWidth: 460, margin: '0 auto' }}>
+          <h2>🚩 開始打地戰役</h2>
+          <p className="subtitle" style={{ textAlign: 'left' }}>選一名主將，從荒野 Lv.1 一路打到洛陽。贏一關升級、拿銀錢，守軍逐關變強。</p>
+          <HeroPicker hero={picked} troop={troop} onHero={setPicked} onTroop={setTroop} />
+        </div>
+        <div className="controls"><button className="fight" onClick={start}>出 征</button></div>
+      </>
+    );
+  }
+
+  return (
+    <>
+      <div className="grid">
+        <div className="panel side-att">
+          <h2>🗡️ {nameOf(ch.hero.id)}</h2>
+          <div className="row"><label>等級</label><span>Lv.{ch.level} ／ 50（XP {ch.xp}）</span></div>
+          <div className="row"><label>武力</label><span>{lh.stats.force}（含成長）</span></div>
+          <div className="row"><label>帶兵</label><span>{playerTroops}（{TROOPS.find((t) => t.v === troop)?.label}）</span></div>
+          <div className="row"><label>銀錢</label><span>{silver}</span></div>
+        </div>
+        <div className="panel side-def">
+          <h2>🏯 {cleared ? '全境平定' : tile!.name}</h2>
+          {!cleared && <>
+            <div className="row"><label>守軍</label><span>武力 {tile!.garrisonForce} ／ {tile!.garrisonTroops} 兵（{TROOPS.find((t) => t.v === tile!.garrisonTroop)?.label}）</span></div>
+            <div className="row"><label>建議</label><span>英雄 Lv.{tile!.recHeroLv}+</span></div>
+            <div className="row"><label>獎勵</label><span>XP {tile!.reward.xp} ／ 銀 {tile!.reward.silver}</span></div>
+          </>}
+          <div className="row"><label>進度</label><span>{Math.min(tileIdx, TILES.length)} / {TILES.length} 關</span></div>
+        </div>
+      </div>
+      <div className="controls">
+        {cleared
+          ? <div className="winner">🎉 攻克洛陽，問鼎天下！</div>
+          : <button className="fight" onClick={attack}>攻打 {tile!.name}</button>}
+        <button className="fight" style={{ background: '#444' }} onClick={() => setStarted(false)}>重新開始</button>
+      </div>
+      {outcome && (
+        <>
+          <div className="result">
+            <div className="winner" style={{ color: outcome.won ? '#c9a227' : '#e06666' }}>{outcome.won ? `攻克 ${outcome.tile.name}！` : `攻打 ${outcome.tile.name} 失敗`}</div>
+            <div className="subtitle">{outcome.turns} 回合 ｜ 我軍剩 {outcome.playerHpLeft} ｜ 守軍剩 {outcome.garrisonHpLeft}{outcome.reward ? ` ｜ +XP ${outcome.reward.xp} +銀 ${outcome.reward.silver}` : ''}</div>
+          </div>
+          <BattleLog events={outcome.events} />
+        </>
+      )}
+    </>
+  );
+}
+
+export default function App() {
+  const [mode, setMode] = useState<'campaign' | 'sandbox'>('campaign');
+  return (
+    <div className="wrap">
+      <h1>三國志戰略 — 戰鬥模擬器</h1>
+      <p className="subtitle">自動戰鬥引擎 v0.1（決定性、兵種相剋、戰法、士氣、8 回合）</p>
+      <div className="controls" style={{ marginTop: 0 }}>
+        <button className="fight" style={{ background: mode === 'campaign' ? 'var(--accent)' : '#444', padding: '8px 20px', fontSize: 14 }} onClick={() => setMode('campaign')}>打地戰役</button>
+        <button className="fight" style={{ background: mode === 'sandbox' ? 'var(--accent)' : '#444', padding: '8px 20px', fontSize: 14 }} onClick={() => setMode('sandbox')}>對戰沙盒</button>
+      </div>
+      {mode === 'campaign' ? <Campaign /> : <Sandbox />}
     </div>
   );
 }
