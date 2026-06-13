@@ -103,7 +103,7 @@ const marchOrders = new Map<string, MarchOrder>();
 
 // M4 集結令狀態（伺服器持有）
 const rallyOrders = new Map<string, RallyOrder>();
-const RALLY_WINDOW_MS = 60_000; // 集結等待時窗 60 秒
+const RALLY_WINDOW_MS = Number(process.env.RALLY_WINDOW_MS ?? 60_000); // 集結等待時窗（env 可調，預設 60 秒）
 
 /** 陣營視圖（供前端）*/
 function factionViewAll() {

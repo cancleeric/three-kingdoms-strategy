@@ -128,6 +128,7 @@ export default function World() {
   const [myAllianceId, setMyAllianceId] = useState<string | null>(null);
   const [activeRallies, setActiveRallies] = useState<RallyView[]>([]);
   const [rallyNote, setRallyNote] = useState<string>('');
+  const [allyCode, setAllyCode] = useState<string>(''); // M4.5：World 頁同盟加入碼
 
   // M4：賽季結算
   const [seasonResult, setSeasonResult] = useState<SeasonSettleResult | null>(null);
@@ -239,6 +240,21 @@ export default function World() {
       } else {
         setNote(r.error ?? '加入陣營失敗');
       }
+    });
+  };
+
+  // M4.5：World 頁直接建盟/加盟（與集結同一 socket，否則 myAllianceId 永遠為空）
+  const createAllianceW = () => {
+    sockRef.current?.emit('sg:setName', { name: '盟主' + (me ?? '').slice(0, 4) });
+    sockRef.current?.emit('sg:createAlliance', { name: '集結同盟' }, (r: { allianceId?: string }) => {
+      if (r?.allianceId) setRallyNote(`已建盟 ${r.allianceId}，把盟號給隊友加入，再右鍵州城發起集結`);
+    });
+  };
+  const joinAllianceW = () => {
+    if (!allyCode.trim()) return;
+    sockRef.current?.emit('sg:setName', { name: '盟眾' + (me ?? '').slice(0, 4) });
+    sockRef.current?.emit('sg:joinAlliance', { allianceId: allyCode.trim() }, (r: { ok: boolean; error?: string }) => {
+      if (!r.ok) setRallyNote(r.error ?? '加盟失敗');
     });
   };
 
@@ -403,7 +419,15 @@ export default function World() {
       <div className="panel" style={{ maxWidth: 900, margin: '8px auto 0' }}>
         <h2>同盟集結攻城</h2>
         {!myAllianceId ? (
-          <div className="subtitle">加入同盟後才能使用集結功能。</div>
+          <div>
+            <div className="subtitle" style={{ marginBottom: 6 }}>{rallyNote || '集結攻城需同盟：建盟或用盟號加盟，再右鍵地圖州城（L6+ 淡黃框）發起。'}</div>
+            <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
+              <button onClick={createAllianceW} style={{ padding: '4px 14px', background: '#5a2e2e', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer', fontSize: 13 }}>建盟</button>
+              <span style={{ color: 'var(--muted)' }}>或</span>
+              <input value={allyCode} onChange={(e) => setAllyCode(e.target.value)} placeholder="盟號 ALxxx" style={{ width: 110 }} />
+              <button onClick={joinAllianceW} style={{ padding: '4px 12px', background: '#3a2e1e', color: 'var(--ink)', border: '1px solid var(--line)', borderRadius: 4, cursor: 'pointer', fontSize: 13 }}>加盟</button>
+            </div>
+          </div>
         ) : (
           <>
             <div className="subtitle" style={{ color: 'var(--gold)', marginBottom: 6 }}>{rallyNote || '點擊地圖州城（L6+）右鍵發起集結攻城'}</div>

@@ -13,7 +13,6 @@
 
 import type { Squad } from './types';
 import type { Axial, WorldMap } from './worldmap';
-import { captureTile } from './worldmap';
 import { attackTile, TILES } from './campaign';
 import type { TileBattleOutcome, TileLevel } from './campaign';
 
@@ -178,11 +177,11 @@ export function resolveRally(
   // 結算戰鬥
   const outcome = attackTile(mergedSquad, TILES[tileIdx], seed);
 
-  // 勝利 → 地塊歸集結發起者所屬（initiator）
+  // 勝利 → 地塊歸集結發起者（M4.5：集結是協同強攻，攻克即翻面，
+  // 不受 captureTile 的「發起者須與目標相鄰」限制——同盟可遠攻州城/洛陽）。
   let updatedMap = map;
-  if (outcome.won) {
-    const cap = captureTile(map, rally.initiator, rally.targetTile);
-    if (cap.ok) updatedMap = cap.map;
+  if (outcome.won && tile) {
+    updatedMap = { ...map, tiles: { ...map.tiles, [tileKey]: { ...tile, owner: rally.initiator } } };
   }
 
   const doneRally: RallyOrder = { ...rally, status: 'done' };
