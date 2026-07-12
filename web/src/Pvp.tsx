@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { io, type Socket } from 'socket.io-client';
+import { useMemo, useState } from 'react';
 import { ROSTER } from './engine';
 import type { TroopType, BattleResult, CombatEvent } from './engine';
+import { useSocketConnection } from './useSocketConnection';
 
 const HERO_NAME: Record<string, string> = { zhaoyun: '趙雲', lubu: '呂布', zhuge: '諸葛亮', luxun: '陸遜', zhouyu: '周瑜', guanping: '關平', huanggai: '黃蓋', lidian: '李典', zhoucang: '周倉' };
 const TROOPS: { v: TroopType; label: string }[] = [
@@ -10,8 +10,6 @@ const TROOPS: { v: TroopType; label: string }[] = [
 const PHASE: Record<string, string> = { command: '指揮', passive: '被動', active: '主動', pursuit: '追擊', attack: '普攻', assault: '突擊', end: '結束' };
 
 export default function Pvp() {
-  const sockRef = useRef<Socket | null>(null);
-  const [connected, setConnected] = useState(false);
   const [roomId, setRoomId] = useState('');
   const [joinCode, setJoinCode] = useState('');
   const [seat, setSeat] = useState<'A' | 'B' | null>(null);
@@ -26,18 +24,14 @@ export default function Pvp() {
   const [allyName, setAllyName] = useState('');
   const [allyCode, setAllyCode] = useState('');
 
-  useEffect(() => {
-    const s = io({ path: '/sanguo/socket', transports: ['websocket', 'polling'] });
-    sockRef.current = s;
-    s.on('connect', () => setConnected(true));
-    s.on('disconnect', () => setConnected(false));
+  const { status, sockRef, retry } = useSocketConnection('/sanguo/socket', (s) => {
     s.on('sg:roomUpdate', (d: { roomId: string; seats: string[] }) => { setRoomId(d.roomId); setSeats(d.seats); });
     s.on('sg:submitted', (d: { seat: string }) => setSubmitted((p) => [...new Set([...p, d.seat])]));
     s.on('sg:result', (d: { result: BattleResult; winnerSeat: string }) => { setResult(d); setSubmitted([]); });
     s.on('sg:opponentLeft', () => { setNote('對手已離開'); setSeats([]); });
     s.on('sg:allianceUpdate', (d) => setAlliance(d));
-    return () => { s.close(); };
-  }, []);
+  });
+  const connected = status === 'connected';
 
   const RANK: Record<string, string> = { leader: '盟主', vice: '副盟主', officer: '官員', member: '盟眾' };
   const TECH_LABEL: Record<string, string> = { marchSpeed: '行軍加速', troopCapacity: '帶兵擴充', tileYield: '領地增產' };
@@ -62,7 +56,13 @@ export default function Pvp() {
   return (
     <>
       <div className="panel" style={{ maxWidth: 620, margin: '0 auto' }}>
-        <h2>🌐 連線對戰（PvP）｜ {connected ? '已連線' : '連線中…'}</h2>
+        <h2>🌐 連線對戰（PvP）｜ {status === 'connected' ? '已連線' : status === 'error' ? '連線失敗' : '連線中…'}</h2>
+        {status === 'error' && (
+          <div className="subtitle" style={{ color: '#e05a5a', marginTop: 4 }}>
+            連線失敗，請確認伺服器已啟動
+            <button onClick={retry} style={{ marginLeft: 10, padding: '4px 14px', background: '#5a2e2e', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer' }}>重試</button>
+          </div>
+        )}
         {!seat && (
           <div className="controls" style={{ margin: '8px 0', justifyContent: 'flex-start', gap: 16 }}>
             <button className="fight" onClick={createRoom} disabled={!connected} style={{ fontSize: 14, padding: '8px 18px' }}>開房</button>
