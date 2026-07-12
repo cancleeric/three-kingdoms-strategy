@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { io, type Socket } from 'socket.io-client';
+import { useEffect, useMemo, useState } from 'react';
 import type { FactionId } from './engine/types';
+import { useSocketConnection } from './useSocketConnection';
 
 // 與 engine/worldmap 對齊的精簡型別（前端只需展示用欄位）
 interface WTile { q: number; r: number; level: number; state: string; owner: string | null; tent: boolean; landmark?: string; isPass?: boolean }
@@ -110,8 +110,6 @@ function MarchCountdown({ order, me }: { order: MarchOrderView; me: string | nul
 }
 
 export default function World() {
-  const sockRef = useRef<Socket | null>(null);
-  const [connected, setConnected] = useState(false);
   const [me, setMe] = useState<string | null>(null);
   const [view, setView] = useState<WorldView | null>(null);
   const [note, setNote] = useState('進入天下：佔下邊緣家園，向相鄰中立地塊送行軍令推進洛陽。');
@@ -136,11 +134,8 @@ export default function World() {
   // M4：賽季結算
   const [seasonResult, setSeasonResult] = useState<SeasonSettleResult | null>(null);
 
-  useEffect(() => {
-    const s = io({ path: '/sanguo/socket', transports: ['websocket', 'polling'] });
-    sockRef.current = s;
+  const { status, sockRef, retry } = useSocketConnection('/sanguo/socket', (s) => {
     s.on('connect', () => {
-      setConnected(true);
       s.emit('sg:enterWorld', {}, (r: { you: string }) => {
         setMe(r.you);
         // 拉取初始陣營狀態
@@ -153,7 +148,6 @@ export default function World() {
         });
       });
     });
-    s.on('disconnect', () => setConnected(false));
     s.on('sg:worldUpdate', (v: WorldView) => setView(v));
 
     // M2 事件監聽
@@ -217,9 +211,7 @@ export default function World() {
     s.on('sg:seasonSettle', (result: SeasonSettleResult) => {
       setSeasonResult(result);
     });
-
-    return () => { s.close(); };
-  }, []);
+  });
 
   // 陣營顏色：優先用陣營色覆蓋玩家個人色
   const factionOf = view?.factionOf ?? {};
@@ -362,7 +354,7 @@ export default function World() {
   return (
     <>
       <div className="panel" style={{ maxWidth: 900, margin: '0 auto' }}>
-        <h2>天下大地圖（M5-8 座標地圖）｜ {connected ? '已連線' : '連線中…'}</h2>
+        <h2>天下大地圖（M5-8 座標地圖）｜ {status === 'connected' ? '已連線' : status === 'error' ? '連線失敗' : '連線中…'}</h2>
         {/* M5-8：選格座標檢視 + 局部縮放 */}
         <div className="row"><label>座標檢視</label>
           {selected ? (
@@ -529,6 +521,11 @@ export default function World() {
               );
             })}
           </svg>
+        ) : status === 'error' ? (
+          <div className="subtitle" style={{ color: '#e05a5a' }}>
+            連線失敗，請確認伺服器已啟動
+            <button onClick={retry} style={{ marginLeft: 10, padding: '4px 14px', background: '#5a2e2e', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer' }}>重試</button>
+          </div>
         ) : <div className="subtitle">載入天下…</div>}
       </div>
 
